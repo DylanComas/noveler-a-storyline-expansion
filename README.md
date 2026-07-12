@@ -4,7 +4,7 @@
 
 It bundles the Noveler manuscript writer, StoryLine scene routing, formatted exports, and Antidote Connect support into one plugin. Instead of switching between separate bridge plugins and editor views, Noveler gives you a dedicated writing surface with page layout controls, focus writing, formatting tools, StoryLine integration, and export workflows built around long-form fiction.
 
-#SCREENSHOT: Obsidian showing Noveler open on a manuscript, with the top toolbar, page editor, status bar, and word count visible#
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/93dc8528-733a-4e96-abe3-538de8115ce0" />
 
 ## Support Noveler
 
@@ -22,7 +22,7 @@ If Noveler helps your writing workflow, you can support development through PayP
 6. Optional: enable the StoryLine bridge in Noveler settings if you want StoryLine scenes and manuscript exports to route through Noveler.
 7. Optional: enable Antidote Connect in Noveler settings if you use Antidote Connectix.
 
-#SCREENSHOT: Obsidian Settings showing Noveler enabled in the Community plugins panel#
+<img width="1106" height="1013" alt="image" src="https://github.com/user-attachments/assets/2480bae4-3698-4afb-b801-7234b681cbec" />
 
 ## Functionalities
 
@@ -30,22 +30,13 @@ If Noveler helps your writing workflow, you can support development through PayP
 
 Noveler opens as its own Obsidian view type, separate from the standard Markdown editor. The editor is designed around manuscript writing, so the first screen is the writing workspace rather than a generic note view.
 
-It includes a top formatting toolbar, a manuscript body, a status bar, live word and character counts, and commands that can be run from Obsidian's command palette. The default manuscript file is `Noveler Manuscript.md`, and exported Markdown is written to `Noveler Export.md` unless you change the paths in settings.
-
-#SCREENSHOT: Noveler editor showing a manuscript page with text, title, toolbar controls, and the live word count in the status bar#
-
-Use this view when you want:
-
-- A writing-first editor inside Obsidian.
-- Persistent manuscript settings stored with the plugin.
-- A cleaner drafting experience than a normal Markdown note.
-- A command palette workflow for formatting, saving, exporting, and switching modes.
+It includes a top formatting toolbar, a manuscript body, a status bar, live word and character counts, and commands that can be run from Obsidian's command palette.
 
 ### Page Mode
 
 Page mode presents the manuscript as a visual page with configurable paper size, margins, zoom, header/footer sizing, and rulers. It is useful when you want the editor to feel closer to a printable manuscript or book layout.
 
-#SCREENSHOT: Page mode showing a white manuscript page, horizontal and vertical rulers, margin guides, page title/header area, and footer/page label#
+<img width="1830" height="1385" alt="image" src="https://github.com/user-attachments/assets/646693eb-942b-4564-90a7-af5d1e3a5afa" />
 
 Page mode supports:
 
@@ -62,7 +53,7 @@ This mode is especially useful when checking line length, page density, chapter 
 
 Focus mode strips the editor down for drafting. It can center the active writing area, use typewriter behavior, and dim text outside the current line or paragraph.
 
-#SCREENSHOT: Focus mode showing a centered manuscript column with surrounding text dimmed and the active writing line highlighted#
+<img width="2517" height="1394" alt="image" src="https://github.com/user-attachments/assets/69f11746-d0b9-4762-8c93-38489455a802" />
 
 Focus mode includes:
 
@@ -78,30 +69,24 @@ Use Focus mode when you are generating prose and want fewer layout distractions.
 
 Noveler includes a responsive top toolbar for common writing and formatting actions. The toolbar adapts to narrower panes and keeps core controls available without requiring repeated command palette use.
 
-#SCREENSHOT: Close-up of the Noveler top toolbar showing font controls, style buttons, text color picker, paragraph styles, alignment, and list buttons#
+<img width="986" height="47" alt="image" src="https://github.com/user-attachments/assets/b8eb90d3-93ea-4c9c-97a3-ab489e6cfdc6" />
 
 Toolbar controls include:
 
-- Font preset selection: serif, sans-serif, or monospace.
 - Font family selection, including available system fonts and fallback fonts.
-- Font size and font scale controls.
+- Font size controls.
 - Bold, italic, underline, and strikethrough.
 - Text color picker with reusable swatches.
-- Paragraph style selection for normal text, dialogue, block quote, scene breaks, and centered ornaments.
 - Heading controls for manuscript structure.
 - Alignment controls: left, center, right, and justify.
 - Line spacing presets, including single, 1.15, 1.5, and double.
 - Bulleted and numbered lists.
 
-Noveler also provides a floating formatting toolbar and context menu actions for selected text, so small edits can happen close to the selection.
-
-#SCREENSHOT: Floating toolbar above selected text with bold, italic, underline, strikethrough, quote, and heading actions#
-
 ### Manuscript Typography
 
 Noveler exposes typography controls that matter for long-form writing, not just inline styling. You can tune the body text, headings, paragraph spacing, indentation, and scene-specific style behavior.
 
-#SCREENSHOT: Noveler settings showing typography, heading style rows, font size, weight, italic, and alignment controls#
+<img width="1108" height="1014" alt="image" src="https://github.com/user-attachments/assets/0449300b-c06e-4e5b-a236-970f3c204c43" />
 
 Typography features include:
 
@@ -115,33 +100,11 @@ Typography features include:
 
 When editing StoryLine Markdown scenes, Noveler can preserve scene-specific typography in frontmatter or in stored plugin settings. That lets a scene keep its visual writing style without forcing every manuscript scene to look identical.
 
-### Paragraph Styles And Manuscript Elements
-
-Noveler includes commands and toolbar actions for manuscript-specific blocks:
-
-#SCREENSHOT: A manuscript page showing normal paragraphs, dialogue styling, a block quote, a centered scene break ornament, and a checklist#
-
-Supported manuscript elements include:
-
-- Normal paragraphs.
-- Dialogue paragraphs.
-- Block quotes.
-- Scene breaks.
-- Centered ornaments.
-- Horizontal rules.
-- Headings from level 1 to level 6.
-- Bulleted lists.
-- Numbered lists.
-- Checklists.
-- Inline bold, italic, underline, strikethrough, superscript, and subscript.
-
-The editor converts between editable HTML and saved Markdown where appropriate, while preserving frontmatter for Markdown scenes.
-
 ### Smart Writing Automation
 
 Noveler can automate common manuscript cleanup while you type or save.
 
-#SCREENSHOT: Noveler settings showing Smart quotes, Smart dashes, Auto-capitalization, Smart indenting, Remove double spaces, and Normalize line breaks toggles#
+<img width="1113" height="1014" alt="image" src="https://github.com/user-attachments/assets/9aee7c51-9a7c-4e81-952c-d67b1acdcac3" />
 
 Automation options include:
 
@@ -155,28 +118,11 @@ Automation options include:
 
 These tools help keep a manuscript clean without sending text outside Obsidian or requiring a separate formatting pass after every session.
 
-### File Opening, Importing, And Frontmatter Preservation
-
-Noveler can open and import supported writing files directly into the manuscript editor.
-
-#SCREENSHOT: A Markdown or HTML file being dragged into the Noveler editor, with the drop overlay visible#
-
-File workflow features include:
-
-- Drag-and-drop opening for Markdown, text, and HTML files.
-- Import folder support using `Noveler Imports` by default.
-- Safe imported filenames.
-- Markdown frontmatter preservation.
-- Scene title detection from frontmatter `title` or `name`, with filename fallback.
-- Markdown scene support when editing StoryLine scene files.
-
-When Noveler opens a Markdown scene, it splits frontmatter from body content, edits the body in the manuscript editor, and merges the frontmatter back during save.
-
-### StoryLine Bridge
+### StoryLine Integration
 
 The StoryLine bridge routes StoryLine manuscript work through Noveler while keeping StoryLine as the project-management plugin.
 
-#SCREENSHOT: Noveler settings showing StoryLine bridge enabled, StoryLine root folder, Replace StoryLine scene opens, Replace StoryLine Manuscript tab, and Show EPUB export#
+<img width="1106" height="1008" alt="image" src="https://github.com/user-attachments/assets/598e33aa-edc9-40c2-9dfa-1f9f66f7c6a1" />
 
 Bridge settings include:
 
@@ -188,7 +134,7 @@ Bridge settings include:
 
 When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. The bridge only opens Markdown scene files under the configured StoryLine root with a valid StoryLine scene folder path.
 
-#SCREENSHOT: StoryLine project view with a scene selected and the same scene opened inside Noveler#
+<img width="2169" height="1389" alt="image" src="https://github.com/user-attachments/assets/46d6f479-9eba-4247-ad92-b32d46c261c2" />
 
 This keeps StoryLine responsible for planning, acts, chapters, scene ordering, and project structure, while Noveler handles the writing surface and formatted manuscript output.
 
@@ -196,7 +142,7 @@ This keeps StoryLine responsible for planning, acts, chapters, scene ordering, a
 
 Noveler supports direct Markdown export from the standalone manuscript editor and formatted StoryLine manuscript exports through the StoryLine bridge.
 
-#SCREENSHOT: StoryLine export modal showing DOCX, PDF, and ePub options plus Noveler export heading checkboxes#
+<img width="422" height="842" alt="image" src="https://github.com/user-attachments/assets/b018d03c-2481-44d3-9ea8-477f9a658c00" />
 
 Export options include:
 
@@ -214,13 +160,13 @@ Export options include:
 
 Formatted StoryLine exports are written into an `Exports` folder inside the StoryLine project area. DOCX and ePub packages are generated directly by the plugin. PDF export uses Obsidian desktop's print-to-PDF capability and requires the desktop app.
 
-#SCREENSHOT: A vault file explorer showing the StoryLine project Exports folder with generated DOCX, PDF, and EPUB files#
-
 ### Antidote Connect Support
+
+## ⚠️ REQUIRES: [Antidote Grammar Checker Integration, by Heziode](https://github.com/heziode/obsidian-antidote)
 
 Noveler includes an Antidote Connect bridge for users who write with Druide Antidote and Connectix.
 
-#SCREENSHOT: Noveler active in Obsidian with Antidote status bar icons visible for correct document, correct selection, dictionary, and guide#
+<img width="277" height="84" alt="image" src="https://github.com/user-attachments/assets/13e77a12-b1c5-4eb3-b74a-c89e22c9894e" />
 
 Antidote features include:
 
@@ -244,21 +190,13 @@ Antidote Connect must be enabled in Noveler settings, and Antidote Connectix mus
 
 Noveler stores its settings in the plugin folder and can migrate from earlier Noveler-related plugin setups.
 
-#SCREENSHOT: The plugin folder showing Noveler Settings.json next to manifest.json, main.js, and styles.css#
-
 On first load, Noveler can import an existing settings file from:
 
 ```text
 .obsidian/plugins/noveler/Noveler Settings.json
 ```
 
-The bundled StoryLine bridge can also migrate settings from the former StoryLine bridge data file:
-
-```text
-.obsidian/plugins/noveler-storyline-bridge/data.json
-```
-
-After migration, future settings are saved inside the `noveler-a-storyline-expansion` plugin folder. The older bridge plugins are not required and should not be enabled alongside this bundle.
+After migration, future settings are saved inside the `noveler-a-storyline-expansion` plugin folder.
 
 ## Key Features
 
