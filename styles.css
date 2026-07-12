@@ -1,0 +1,1391 @@
+.workspace-leaf-content[data-type="noveler-manuscript-writer"] > .view-content.noveler-view,
+.view-content.noveler-view,
+.noveler-view {
+  height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.noveler-storyline-bridge-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.noveler-bridge-export-options {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.noveler-bridge-export-options-title {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.noveler-bridge-export-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
+.noveler-bridge-export-option input {
+  margin: 0;
+}
+
+.noveler-antidote-status.hide {
+  display: none;
+}
+
+.noveler-antidote-status {
+  color: var(--text-accent);
+}
+
+.noveler-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.noveler-top-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 8px 5px;
+  overflow: visible;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+.noveler-top-toolbar-content {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 auto;
+  white-space: nowrap;
+  transform: scale(var(--noveler-toolbar-scale, 1));
+  transform-origin: center center;
+}
+
+.noveler-toolbar-group {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.noveler-toolbar-group-font {
+  flex: 1 1 220px;
+  max-width: 330px;
+}
+
+.noveler-toolbar-group-format {
+  flex: 0 0 auto;
+}
+
+.noveler-toolbar-group-paragraph {
+  flex: 1 1 300px;
+  max-width: 420px;
+}
+
+.noveler-toolbar-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.noveler-toolbar-label {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.noveler-icon-button,
+.noveler-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  cursor: var(--cursor);
+  line-height: 1;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+
+.noveler-icon-button {
+  width: 26px;
+  padding: 0;
+}
+
+.noveler-icon-button:hover,
+.noveler-text-button:hover,
+.noveler-text-button.is-active {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+.noveler-icon-button:active,
+.noveler-text-button:active {
+  transform: translateY(1px);
+}
+
+.noveler-icon-button.is-active,
+.noveler-text-button.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+
+.noveler-icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.noveler-color-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  cursor: var(--cursor);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+
+.noveler-color-control:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+.noveler-color-control:active {
+  transform: translateY(1px);
+}
+
+.noveler-color-control svg {
+  width: 15px;
+  height: 15px;
+}
+
+.noveler-color-control::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  left: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--noveler-color-value, #000000);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+
+.noveler-color-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 220px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.noveler-color-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.noveler-color-popover-title {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.noveler-color-popover-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: var(--cursor);
+}
+
+.noveler-color-popover-close:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.noveler-color-popover-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.noveler-color-picker {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 124px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background:
+    linear-gradient(to top, #000000, transparent),
+    linear-gradient(to right, #ffffff, transparent),
+    var(--noveler-picker-hue, #ff0000);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.noveler-color-picker-marker {
+  position: absolute;
+  left: var(--noveler-picker-x, 0%);
+  top: var(--noveler-picker-y, 0%);
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.noveler-color-hue {
+  box-sizing: border-box;
+  display: block;
+  width: 100% !important;
+  min-width: 100%;
+  max-width: none;
+  inline-size: 100% !important;
+  height: 22px;
+  margin: 0 0 8px !important;
+  margin-inline: 0 !important;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: var(--cursor);
+}
+
+.noveler-color-hue::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+
+.noveler-color-hue::-moz-range-track {
+  width: 100%;
+  height: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+
+.noveler-color-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -1px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+}
+
+.noveler-color-hue::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+}
+
+.noveler-color-hex-row {
+  display: grid;
+  grid-template-columns: 24px auto 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.noveler-color-preview {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--noveler-color-value, #000000);
+}
+
+.noveler-color-hex-label {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.noveler-color-hex-input {
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.noveler-color-hex-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: none;
+}
+
+.noveler-color-hex-input.is-invalid {
+  border-color: var(--text-error);
+}
+
+.noveler-color-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.noveler-color-swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--noveler-swatch-color, transparent);
+  background-image: none;
+  cursor: var(--cursor);
+}
+
+.noveler-color-swatch:not(.is-empty) {
+  background-color: var(--noveler-swatch-color) !important;
+  background-image: none !important;
+}
+
+.noveler-color-swatch:hover {
+  border-color: var(--interactive-accent);
+}
+
+.noveler-color-swatch.is-empty {
+  background:
+    linear-gradient(45deg, transparent 46%, var(--text-faint) 48%, var(--text-faint) 52%, transparent 54%),
+    var(--background-secondary);
+}
+
+.noveler-color-swatch-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  color: var(--text-error);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+
+.noveler-color-swatch:not(.is-empty):hover .noveler-color-swatch-remove {
+  display: inline-flex;
+}
+
+.noveler-segmented {
+  gap: 0;
+}
+
+.noveler-segmented .noveler-text-button {
+  border-radius: 0;
+}
+
+.noveler-segmented .noveler-text-button:first-child {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.noveler-segmented .noveler-text-button:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.noveler-field {
+  position: relative;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+}
+
+.noveler-field-label,
+.noveler-toggle {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.noveler-field select,
+.noveler-field input[type="number"],
+.noveler-field input[type="text"] {
+  height: 22px;
+  min-width: 0;
+  max-width: 190px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.noveler-field select {
+  appearance: none;
+  padding-right: 18px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  cursor: var(--cursor);
+}
+
+.noveler-field-font {
+  flex: 1 1 130px;
+}
+
+.noveler-field-size {
+  flex: 0 1 78px;
+}
+
+.noveler-field-style {
+  flex: 1 1 112px;
+}
+
+.noveler-field-align,
+.noveler-field-line {
+  flex: 1 1 88px;
+}
+
+.noveler-top-toolbar.is-compact .noveler-top-toolbar-content {
+  gap: 3px;
+}
+
+.noveler-top-toolbar.is-compact .noveler-toolbar-group {
+  gap: 2px;
+  padding: 2px;
+}
+
+.noveler-top-toolbar.is-compact .noveler-toolbar-controls {
+  gap: 2px;
+}
+
+.noveler-top-toolbar.is-compact .noveler-field {
+  gap: 4px;
+  padding: 0 1px;
+}
+
+.noveler-top-toolbar.is-tight {
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-field-label {
+  display: none;
+}
+
+.noveler-top-toolbar.is-tight .noveler-field {
+  padding: 0 1px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-field-font {
+  flex-basis: 90px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-field-style {
+  flex-basis: 76px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-field-align,
+.noveler-top-toolbar.is-tight .noveler-field-line {
+  flex-basis: 58px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-icon-button,
+.noveler-top-toolbar.is-tight .noveler-color-control {
+  width: 24px;
+  min-width: 24px;
+}
+
+.noveler-top-toolbar.is-tight .noveler-text-button,
+.noveler-top-toolbar.is-tight .noveler-icon-button {
+  height: 24px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-top-toolbar-content,
+.noveler-top-toolbar.is-ultra-tight .noveler-toolbar-controls {
+  gap: 1px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-toolbar-group {
+  border-right-width: 0;
+  border-left-width: 0;
+  border-radius: 0;
+  padding: 1px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-field {
+  padding: 0;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-field-size {
+  flex-basis: 38px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-field-font {
+  flex-basis: 58px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-field-style {
+  flex-basis: 48px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-field-align,
+.noveler-top-toolbar.is-ultra-tight .noveler-field-line {
+  flex-basis: 42px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-icon-button,
+.noveler-top-toolbar.is-ultra-tight .noveler-color-control {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+
+.noveler-top-toolbar.is-ultra-tight .noveler-icon-button svg,
+.noveler-top-toolbar.is-ultra-tight .noveler-color-control svg {
+  width: 14px;
+  height: 14px;
+}
+
+.noveler-field select option,
+.noveler-field select optgroup {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.noveler-field select option:hover,
+.noveler-field select option:focus {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.noveler-field select option:checked {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.noveler-field select option:disabled {
+  background-color: var(--background-primary);
+  color: var(--text-faint);
+}
+
+.noveler-field-select::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-faint);
+  pointer-events: none;
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.noveler-field select:focus,
+.noveler-field input[type="number"]:focus,
+.noveler-field input[type="text"]:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.noveler-field:focus-within {
+  border-color: transparent;
+}
+
+.noveler-field-number input {
+  width: clamp(34px, 5vw, 48px);
+  text-align: right;
+}
+
+.noveler-field-text input {
+  width: 96px;
+}
+
+.noveler-field-font select {
+  width: 100%;
+  max-width: none;
+}
+
+.noveler-field-style select {
+  width: 100%;
+}
+
+.noveler-field-align select {
+  width: 100%;
+}
+
+.noveler-field-line select {
+  width: 100%;
+}
+
+.noveler-field-zoom select {
+  width: 64px;
+}
+
+.noveler-field-range {
+  min-width: 130px;
+}
+
+.noveler-field-range input {
+  width: 86px;
+}
+
+.noveler-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+}
+
+.noveler-toggle input {
+  margin: 0;
+}
+
+.noveler-work-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  overflow: auto;
+  background: var(--background-secondary);
+}
+
+.noveler-work-area.is-dragging-file::after {
+  content: "Drop to open in Noveler";
+  position: fixed;
+  inset: auto 24px 42px auto;
+  z-index: 10;
+  padding: 10px 14px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+}
+
+.noveler-document {
+  display: block;
+  width: max(100%, calc(var(--noveler-scaled-page-width) + 48px));
+  min-width: 0;
+  padding: 18px 24px 32px;
+}
+
+.noveler-page-row {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  width: 100%;
+}
+
+.noveler-work-body {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  min-width: 100%;
+}
+
+.noveler-ruler {
+  color: var(--text-muted);
+  font-size: 10px;
+  user-select: none;
+}
+
+.noveler-horizontal-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  height: 26px;
+  width: 100%;
+  cursor: context-menu;
+  background: var(--background-primary);
+}
+
+.noveler-ruler-corner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-faint);
+}
+
+.noveler-horizontal-ruler-track {
+  position: relative;
+  overflow: hidden;
+  height: 26px;
+  width: var(--noveler-scaled-page-width);
+  margin: 0 auto;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background:
+    repeating-linear-gradient(
+      to right,
+      var(--background-modifier-border) 0,
+      var(--background-modifier-border) 1px,
+      transparent 1px,
+      transparent var(--noveler-ruler-minor-step)
+    ),
+    var(--background-primary);
+}
+
+.noveler-margin-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--background-secondary);
+  opacity: 0.75;
+}
+
+.noveler-margin-zone-left {
+  left: 0;
+  width: var(--noveler-margin-left);
+}
+
+.noveler-margin-zone-right {
+  right: 0;
+  width: var(--noveler-margin-right);
+}
+
+.noveler-margin-zone-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: auto;
+  height: var(--noveler-margin-top);
+}
+
+.noveler-margin-zone-bottom {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--noveler-margin-bottom);
+}
+
+.noveler-margin-handle {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--interactive-accent);
+}
+
+.noveler-left-margin-handle {
+  left: var(--noveler-margin-left);
+}
+
+.noveler-right-margin-handle {
+  right: var(--noveler-margin-right);
+}
+
+.noveler-top-margin-handle,
+.noveler-bottom-margin-handle {
+  left: 2px;
+  right: 2px;
+  width: auto;
+  height: 2px;
+}
+
+.noveler-top-margin-handle {
+  top: var(--noveler-margin-top);
+  bottom: auto;
+}
+
+.noveler-bottom-margin-handle {
+  top: auto;
+  bottom: var(--noveler-margin-bottom);
+}
+
+.noveler-ruler-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 12px;
+  background: var(--text-faint);
+}
+
+.noveler-ruler-tick span {
+  position: absolute;
+  top: -11px;
+  left: 3px;
+  color: var(--text-faint);
+}
+
+.noveler-ruler-tick-vertical {
+  top: 0;
+  bottom: auto;
+  left: 0;
+  width: 12px;
+  height: 1px;
+}
+
+.noveler-ruler-tick-vertical span {
+  top: -6px;
+  left: 14px;
+  writing-mode: vertical-rl;
+}
+
+.noveler-side-ruler {
+  position: sticky;
+  top: auto;
+  left: 0;
+  z-index: 7;
+  width: 34px;
+  align-self: start;
+  height: var(--noveler-scaled-page-height);
+  min-height: var(--noveler-scaled-page-height);
+  border-right: 1px solid var(--background-modifier-border);
+  cursor: context-menu;
+  background: var(--background-primary);
+  transform: translateY(var(--noveler-active-page-top, 0px));
+  transition: transform 120ms ease;
+}
+
+.noveler-vertical-ruler-track {
+  position: relative;
+  overflow: hidden;
+  width: 34px;
+  height: var(--noveler-scaled-page-height);
+  margin-top: 18px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      var(--background-modifier-border) 0,
+      var(--background-modifier-border) 1px,
+      transparent 1px,
+      transparent var(--noveler-ruler-minor-step)
+    ),
+    var(--background-primary);
+}
+
+.noveler-right-ruler {
+  border-right: 0;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.noveler-side-ruler-label,
+.noveler-side-ruler-value {
+  position: sticky;
+  top: 8px;
+  display: block;
+  writing-mode: vertical-rl;
+  margin: 8px auto 0;
+  color: var(--text-faint);
+}
+
+.noveler-side-ruler-value {
+  top: 62px;
+  color: var(--text-muted);
+}
+
+.noveler-editor-frame {
+  box-sizing: border-box;
+  position: relative;
+  width: var(--noveler-scaled-page-width);
+  min-height: var(--noveler-editor-stack-height, var(--noveler-scaled-page-height));
+  max-width: none;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.noveler-shell[data-mode="focus"] .noveler-top-toolbar {
+  display: none;
+}
+
+.noveler-work-area[data-mode="focus"] {
+  background: var(--background-primary);
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-document {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-horizontal-ruler,
+.noveler-work-area[data-mode="focus"] .noveler-side-ruler {
+  display: none;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-work-body {
+  display: block;
+  min-height: 100%;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-page-row {
+  display: block;
+  min-height: 100%;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-editor-frame {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.noveler-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: var(--noveler-page-width);
+  min-height: 60vh;
+  outline: none;
+  caret-color: var(--text-accent);
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  transform: scale(var(--noveler-page-zoom));
+  transform-origin: top left;
+}
+
+.noveler-page {
+  box-sizing: border-box;
+  position: relative;
+  width: var(--noveler-page-width);
+  min-height: var(--noveler-page-height);
+  padding: var(--noveler-margin-top) var(--noveler-margin-right) var(--noveler-margin-bottom) var(--noveler-margin-left);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.noveler-page::before {
+  content: attr(data-page-title);
+  position: absolute;
+  top: calc(var(--noveler-margin-top) / 2);
+  left: var(--noveler-margin-left);
+  right: var(--noveler-margin-right);
+  transform: translateY(-50%);
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-faint);
+  font-size: var(--noveler-header-footer-font-size, 9pt);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.noveler-page::after {
+  content: attr(data-page-label);
+  position: absolute;
+  left: var(--noveler-margin-left);
+  right: var(--noveler-margin-right);
+  bottom: calc(var(--noveler-margin-bottom) / 2);
+  transform: translateY(50%);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--noveler-header-footer-font-size, 9pt);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.noveler-pagination-marker {
+  display: inline;
+  width: 0;
+  overflow: hidden;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-editor {
+  position: static;
+  display: block;
+  width: var(--noveler-focus-content-width, 80%);
+  max-width: var(--noveler-focus-content-width, 80%);
+  min-width: 0;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--noveler-focus-padding-y, 50vh) 0;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  transform: none;
+}
+
+.noveler-shell[data-mode="focus"][data-focus-dim="true"] .noveler-editor > * {
+  opacity: 0.35;
+  transition: opacity 120ms ease;
+}
+
+.noveler-shell[data-mode="focus"][data-focus-dim="true"] .noveler-editor > .noveler-focus-block {
+  opacity: 1;
+}
+
+.noveler-shell[data-mode="focus"][data-focus-dim="true"][data-focus-scope="line"] .noveler-editor > .noveler-focus-block {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0,
+    rgba(0, 0, 0, 0.35) var(--noveler-focus-line-top, 0),
+    #000000 var(--noveler-focus-line-top, 0),
+    #000000 var(--noveler-focus-line-bottom, 100%),
+    rgba(0, 0, 0, 0.35) var(--noveler-focus-line-bottom, 100%),
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0,
+    rgba(0, 0, 0, 0.35) var(--noveler-focus-line-top, 0),
+    #000000 var(--noveler-focus-line-top, 0),
+    #000000 var(--noveler-focus-line-bottom, 100%),
+    rgba(0, 0, 0, 0.35) var(--noveler-focus-line-bottom, 100%),
+    rgba(0, 0, 0, 0.35) 100%
+  );
+}
+
+.noveler-editor p {
+  margin-block-start: var(--noveler-paragraph-before);
+  margin-block-end: var(--noveler-paragraph-after);
+  padding-left: var(--noveler-hanging-indent);
+  text-indent: calc(var(--noveler-first-line-indent) - var(--noveler-hanging-indent));
+}
+
+.noveler-editor [data-noveler-split-part="tail"] {
+  margin-block-start: 0;
+  text-indent: 0;
+}
+
+.noveler-editor h1,
+.noveler-editor h2,
+.noveler-editor h3,
+.noveler-editor h4,
+.noveler-editor h5,
+.noveler-editor h6 {
+  margin: 1.4em 0 0.5em;
+  line-height: 1.2;
+  text-indent: 0;
+}
+
+.noveler-editor h1 {
+  font-family: var(--noveler-h1-font-family, inherit);
+  font-size: var(--noveler-h1-font-size, 28pt);
+  font-weight: var(--noveler-h1-font-weight, 700);
+  font-style: var(--noveler-h1-font-style, normal);
+  text-align: var(--noveler-h1-text-align, left);
+}
+
+.noveler-editor h2 {
+  font-family: var(--noveler-h2-font-family, inherit);
+  font-size: var(--noveler-h2-font-size, 24pt);
+  font-weight: var(--noveler-h2-font-weight, 700);
+  font-style: var(--noveler-h2-font-style, normal);
+  text-align: var(--noveler-h2-text-align, left);
+}
+
+.noveler-editor h3 {
+  font-family: var(--noveler-h3-font-family, inherit);
+  font-size: var(--noveler-h3-font-size, 21pt);
+  font-weight: var(--noveler-h3-font-weight, 600);
+  font-style: var(--noveler-h3-font-style, normal);
+  text-align: var(--noveler-h3-text-align, left);
+}
+
+.noveler-editor h4 {
+  font-family: var(--noveler-h4-font-family, inherit);
+  font-size: var(--noveler-h4-font-size, 18pt);
+  font-weight: var(--noveler-h4-font-weight, 600);
+  font-style: var(--noveler-h4-font-style, normal);
+  text-align: var(--noveler-h4-text-align, left);
+}
+
+.noveler-editor h5 {
+  font-family: var(--noveler-h5-font-family, inherit);
+  font-size: var(--noveler-h5-font-size, 16pt);
+  font-weight: var(--noveler-h5-font-weight, 600);
+  font-style: var(--noveler-h5-font-style, normal);
+  text-align: var(--noveler-h5-text-align, left);
+}
+
+.noveler-editor h6 {
+  font-family: var(--noveler-h6-font-family, inherit);
+  font-size: var(--noveler-h6-font-size, 14pt);
+  font-weight: var(--noveler-h6-font-weight, 600);
+  font-style: var(--noveler-h6-font-style, normal);
+  text-align: var(--noveler-h6-text-align, left);
+}
+
+.noveler-editor blockquote,
+.noveler-editor .noveler-style-blockquote {
+  margin: 1em 0;
+  padding-left: 1.2em;
+  border-left: 3px solid var(--interactive-accent);
+  color: var(--text-muted);
+  text-indent: 0;
+}
+
+.noveler-editor .noveler-style-dialogue {
+  padding-left: 0;
+  text-indent: 1em;
+}
+
+.noveler-editor ul,
+.noveler-editor ol {
+  margin-block-start: var(--noveler-paragraph-before);
+  margin-block-end: var(--noveler-paragraph-after);
+  padding-left: 2em;
+}
+
+.noveler-editor li {
+  margin: 0.2em 0;
+  text-indent: 0;
+}
+
+.noveler-editor .noveler-checklist {
+  list-style: none;
+  padding-left: 1.2em;
+}
+
+.noveler-editor .noveler-checkbox {
+  display: inline-block;
+  width: 1.2em;
+  color: var(--text-accent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.noveler-editor .noveler-scene-break {
+  margin: 2em 0;
+  text-align: center;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+
+.noveler-editor hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.noveler-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.noveler-status-text,
+.noveler-word-count {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.noveler-word-count {
+  text-align: right;
+}
+
+.noveler-status-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.noveler-status-controls .noveler-field select {
+  height: 24px;
+}
+
+.noveler-floating-toolbar {
+  position: fixed;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.noveler-floating-toolbar.is-visible {
+  display: inline-flex;
+}
+
+.noveler-heading-size-input {
+  width: 64px;
+}
+
+@media (max-width: 760px) {
+  .noveler-top-toolbar {
+    justify-content: center;
+    align-items: center;
+  }
+
+  .noveler-status-bar {
+    flex-wrap: wrap;
+  }
+
+  .noveler-status-controls {
+    order: 3;
+    width: 100%;
+  }
+
+  .noveler-document {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+
+  .noveler-horizontal-ruler,
+  .noveler-side-ruler {
+    display: none;
+  }
+
+  .noveler-page-row {
+    display: block;
+  }
+
+  .noveler-editor-frame,
+  .noveler-work-area[data-mode="focus"] .noveler-editor-frame {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border-right: 0;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .noveler-editor {
+    gap: 16px;
+  }
+
+  .noveler-page {
+    width: 100%;
+    padding: 28px 20px 40px;
+    border-right: 0;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .noveler-work-area[data-mode="focus"] .noveler-editor {
+    width: var(--noveler-focus-content-width, 80%);
+    max-width: var(--noveler-focus-content-width, 80%);
+    margin: 0 auto;
+    padding: var(--noveler-focus-padding-y, 50vh) 0;
+    border-right: 0;
+    border-left: 0;
+    box-shadow: none;
+  }
+}
