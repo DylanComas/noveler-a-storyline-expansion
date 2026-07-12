@@ -125,7 +125,7 @@ These tools help keep a manuscript clean without sending text outside Obsidian o
 
 The StoryLine bridge routes StoryLine manuscript work through Noveler while keeping StoryLine as the project-management plugin.
 
-<img width="1106" height="1008" alt="image" src="https://github.com/user-attachments/assets/598e33aa-edc9-40c2-9dfa-1f9f66f7c6a1" />
+<img width="2169" height="1389" alt="image" src="https://github.com/user-attachments/assets/46d6f479-9eba-4247-ad92-b32d46c261c2" />
 
 Bridge settings include:
 
@@ -139,9 +139,11 @@ When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, an
 
 Noveler can display visual-only links for StoryLine Characters, Locations, and Items directly in manuscript text. Each category has its own configurable color and bottom-bar visibility toggle. Links recognize entry names and supported nickname or alias fields, including custom Item fields named `NICKNAME / ALIAS`. Clicking a link opens the corresponding StoryLine entry without adding link markup to the Markdown scene or its exports.
 
+<img width="847" height="1205" alt="image" src="https://github.com/user-attachments/assets/ba125cff-a06d-4185-bdc2-c37999d6411b" />
+
 When text is selected in Noveler, the right-click menu provides searchable Character, Location, and Item submenus. Each submenu lists existing Codex entries and includes a creation action. New entries use a confirmation dialog so the StoryLine Name field and generated Markdown filename use the intended full entry name rather than necessarily using the selected text. Choosing an existing Character or Location adds the selection to its newline-separated Nickname / Alias field when it is not already present, then opens the entry for editing. StoryLine views and Noveler's colored links refresh automatically after Codex changes.
 
-<img width="2169" height="1389" alt="image" src="https://github.com/user-attachments/assets/46d6f479-9eba-4247-ad92-b32d46c261c2" />
+<img width="1053" height="514" alt="image" src="https://github.com/user-attachments/assets/beb0a020-9107-408f-9f42-5168501f5a9e" />
 
 This keeps StoryLine responsible for planning, acts, chapters, scene ordering, and project structure, while Noveler handles the writing surface and formatted manuscript output.
 
