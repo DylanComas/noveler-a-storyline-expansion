@@ -25,7 +25,6 @@ If Noveler helps your writing workflow, you can support development through PayP
 7. Optional: enable Antidote Connect in Noveler settings if you use Antidote Connectix.
 
 <img width="1106" height="1013" alt="image" src="https://github.com/user-attachments/assets/2480bae4-3698-4afb-b801-7234b681cbec" />
-
 ---
 
 ## Functionalities
@@ -138,6 +137,10 @@ Bridge settings include:
 
 When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. The bridge only opens Markdown scene files under the configured StoryLine root with a valid StoryLine scene folder path.
 
+Noveler can display visual-only links for StoryLine Characters, Locations, and Items directly in manuscript text. Each category has its own configurable color and bottom-bar visibility toggle. Links recognize entry names and supported nickname or alias fields, including custom Item fields named `NICKNAME / ALIAS`. Clicking a link opens the corresponding StoryLine entry without adding link markup to the Markdown scene or its exports.
+
+When text is selected in Noveler, the right-click menu provides searchable Character, Location, and Item submenus. Each submenu lists existing Codex entries and includes a creation action. New entries use a confirmation dialog so the StoryLine Name field and generated Markdown filename use the intended full entry name rather than necessarily using the selected text. Choosing an existing Character or Location adds the selection to its newline-separated Nickname / Alias field when it is not already present, then opens the entry for editing. StoryLine views and Noveler's colored links refresh automatically after Codex changes.
+
 <img width="2169" height="1389" alt="image" src="https://github.com/user-attachments/assets/46d6f479-9eba-4247-ad92-b32d46c261c2" />
 
 This keeps StoryLine responsible for planning, acts, chapters, scene ordering, and project structure, while Noveler handles the writing surface and formatted manuscript output.
@@ -201,7 +204,6 @@ On first load, Noveler can import an existing settings file from:
 ```
 
 After migration, future settings are saved inside the `noveler-a-storyline-expansion` plugin folder.
-
 ---
 
 ## Key Features
@@ -213,6 +215,8 @@ After migration, future settings are saved inside the `noveler-a-storyline-expan
 - **Rich formatting toolbar**: Fast access to fonts, text styling, colors, paragraph styles, headings, alignment, spacing, lists, and manuscript elements.
 - **Scene-aware editing**: StoryLine Markdown scenes can open in Noveler while preserving frontmatter and scene-specific typography settings.
 - **StoryLine manuscript routing**: Scene opens and the StoryLine Manuscript tab can be replaced by Noveler.
+- **Colored StoryLine entity links**: Visual-only Character, Location, and Item links use configurable colors, aliases, independent visibility controls, and direct Codex navigation.
+- **Selection-to-Codex workflow**: Search existing entries or create new Characters, Locations, and Items from selected manuscript text without leaving Noveler.
 - **Formatted DOCX/PDF/ePub export**: StoryLine manuscripts can export with Noveler layout and typography.
 - **Markdown export**: Standalone Noveler manuscripts can export back to Markdown.
 - **Antidote Connect integration**: Correct selections, correct full documents, open dictionaries, and open guides from Noveler.

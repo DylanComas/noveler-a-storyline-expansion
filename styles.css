@@ -11,6 +11,129 @@
   font-size: 12px;
 }
 
+::highlight(noveler-storyline-character-links) {
+  color: var(--noveler-storyline-character-link-color, #8b5cf6);
+}
+
+::highlight(noveler-storyline-location-links) {
+  color: var(--noveler-storyline-location-link-color, #2f9e73);
+}
+
+::highlight(noveler-storyline-item-links) {
+  color: var(--noveler-storyline-item-link-color, #d97706);
+}
+
+.noveler-editor.is-storyline-link-hovered {
+  cursor: pointer;
+}
+
+.noveler-storyline-context-menu-host {
+  overflow: visible !important;
+}
+
+.noveler-storyline-context-submenu {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  width: min(286px, calc(100vw - 16px));
+  max-height: min(382px, calc(100vh - 16px));
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+  font-size: 13px;
+}
+
+.noveler-storyline-context-create,
+.noveler-storyline-context-entry {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.noveler-storyline-context-entry {
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  flex: 0 0 30px;
+  padding: 4px 7px;
+}
+
+.noveler-storyline-context-create {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  font-weight: 600;
+}
+
+.noveler-storyline-context-create:hover,
+.noveler-storyline-context-create:focus-visible,
+.noveler-storyline-context-entry:hover,
+.noveler-storyline-context-entry:focus-visible {
+  background: var(--background-modifier-hover);
+}
+
+.noveler-storyline-context-search {
+  width: 100%;
+  height: 30px;
+  flex: 0 0 auto;
+  margin: 0;
+  border-color: var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.noveler-storyline-context-list {
+  max-height: 300px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.noveler-storyline-context-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.noveler-storyline-context-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.noveler-storyline-context-entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noveler-storyline-context-empty {
+  padding: 10px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .noveler-bridge-export-options {
   margin-top: 12px;
   padding-top: 10px;
@@ -474,6 +597,20 @@
 }
 
 .noveler-segmented .noveler-text-button:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.noveler-storyline-link-controls .noveler-icon-button {
+  border-radius: 0;
+}
+
+.noveler-storyline-link-controls .noveler-icon-button:first-child {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.noveler-storyline-link-controls .noveler-icon-button:last-child {
   border-top-right-radius: 6px;
   border-bottom-right-radius: 6px;
 }

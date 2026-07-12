@@ -2,7 +2,7 @@
 const __novelerNativeRequire = require;
 const __novelerModules = {
 "./noveler": function(module, exports, require) {
-const { ItemView, Menu, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml, stringifyYaml, setIcon } = require("obsidian");
+const { ItemView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml, stringifyYaml, setIcon } = require("obsidian");
 
 const VIEW_TYPE = "noveler-manuscript-writer";
 const DEFAULT_MANUSCRIPT = "<p><br></p>";
@@ -85,7 +85,18 @@ const DEFAULT_SETTINGS = {
     storyLineRoot: "StoryLine",
     replaceStoryLineSceneOpens: true,
     replaceManuscriptView: true,
-    enableEpubExport: true
+    enableEpubExport: true,
+    visualLinks: true,
+    visualLinkCategories: {
+      character: true,
+      location: true,
+      item: true
+    },
+    visualLinkColors: {
+      character: "#8b5cf6",
+      location: "#2f9e73",
+      item: "#d97706"
+    }
   },
   sceneSettings: {}
 };
@@ -170,6 +181,14 @@ function clone(value) {
 function mergeSettings(stored) {
   const result = clone(DEFAULT_SETTINGS);
   mergeInto(result, stored || {});
+  if (
+    stored
+    && stored.storyLineBridge
+    && stored.storyLineBridge.visualLinks === false
+    && !stored.storyLineBridge.visualLinkCategories
+  ) {
+    result.storyLineBridge.visualLinkCategories = { character: false, location: false, item: false };
+  }
   if (result.layout.mode === "draft") {
     result.layout.mode = "focus";
   }
@@ -1316,6 +1335,15 @@ class NovelerView extends ItemView {
     this.lastCaretSelectionState = null;
     this.revealCaretAfterPagination = false;
     this.focusModeActive = false;
+    this.storyLineLinkFrame = 0;
+    this.storyLineLinkRanges = [];
+    this.storyLineHoverFrame = 0;
+    this.storyLineHoverPoint = null;
+    this.storyLineEntityRefreshTimer = null;
+    this.storyLineContextMenu = null;
+    this.storyLineContextSubmenuEl = null;
+    this.storyLineContextAnchorEl = null;
+    this.storyLineContextCloseTimer = null;
   }
 
   getViewType() {
@@ -1344,6 +1372,7 @@ class NovelerView extends ItemView {
       this.defaultSceneSettings = getNovelerSceneSettings(this.plugin.settings);
     }
     this.render();
+    this.registerStoryLineEntityLinkUpdates();
     this.loadInstalledFonts();
     await this.loadDocument(this.getStatePath());
     this.applySettings();
@@ -1402,6 +1431,20 @@ class NovelerView extends ItemView {
       window.cancelAnimationFrame(this.focusCenterFrame);
       this.focusCenterFrame = 0;
     }
+    if (this.storyLineLinkFrame) {
+      window.cancelAnimationFrame(this.storyLineLinkFrame);
+      this.storyLineLinkFrame = 0;
+    }
+    if (this.storyLineHoverFrame) {
+      window.cancelAnimationFrame(this.storyLineHoverFrame);
+      this.storyLineHoverFrame = 0;
+    }
+    if (this.storyLineEntityRefreshTimer) {
+      window.clearTimeout(this.storyLineEntityRefreshTimer);
+      this.storyLineEntityRefreshTimer = null;
+    }
+    this.closeStoryLineContextSubmenu();
+    this.clearStoryLineVisualLinks();
     this.leaveFocusMode();
     this.closeColorPopover();
     await this.saveDocument({ silent: true });
@@ -1444,6 +1487,7 @@ class NovelerView extends ItemView {
     this.registerDomEvent(this.editorEl, "input", () => {
       this.captureSelection();
       this.schedulePagination();
+      this.scheduleStoryLineVisualLinks();
       this.scheduleSave();
       this.updateWordCount();
       this.updateStatus("Unsaved changes");
@@ -1453,8 +1497,11 @@ class NovelerView extends ItemView {
     this.registerDomEvent(this.editorEl, "keydown", (event) => this.onKeydown(event));
     this.registerDomEvent(this.editorEl, "pointerdown", (event) => this.captureCaretFromPoint(event));
     this.registerDomEvent(this.editorEl, "click", (event) => this.onEditorClick(event));
+    this.registerDomEvent(this.editorEl, "pointermove", (event) => this.updateStoryLineLinkHover(event));
+    this.registerDomEvent(this.editorEl, "pointerleave", () => this.clearStoryLineLinkHover());
     this.registerDomEvent(this.editorEl, "mouseup", () => this.captureSelection());
     this.registerDomEvent(this.editorEl, "keyup", () => this.captureSelection());
+    this.registerDomEvent(this.editorEl, "focusin", () => this.scheduleStoryLineVisualLinks());
     this.registerDomEvent(this.editorEl, "contextmenu", (event) => this.openContextMenu(event));
     this.registerDomEvent(this.workAreaEl, "dragenter", (event) => this.onEditorDragEnter(event));
     this.registerDomEvent(this.workAreaEl, "dragover", (event) => this.onEditorDragOver(event));
@@ -1628,6 +1675,19 @@ class NovelerView extends ItemView {
     this.createSelect(this.statusControlsEl, "Zoom", String(zoom), getZoomOptions(zoom), (value) => {
       this.setPageZoom(Number(value));
     });
+    if (this.getStoryLinePluginForCodex()) {
+      const linkButtons = this.statusControlsEl.createDiv({ cls: "noveler-segmented noveler-storyline-link-controls" });
+      this.createStoryLineLinkButton(linkButtons, "character", "users", "Character links");
+      this.createStoryLineLinkButton(linkButtons, "location", "map-pin", "Location links");
+      this.createStoryLineLinkButton(linkButtons, "item", "package", "Item links");
+    }
+  }
+
+  createStoryLineLinkButton(parent, kind, icon, label) {
+    const categories = this.plugin.settings.storyLineBridge.visualLinkCategories || DEFAULT_SETTINGS.storyLineBridge.visualLinkCategories;
+    const button = this.createIconButton(parent, icon, label, () => this.toggleStoryLineVisualLinks(kind), categories[kind] !== false);
+    button.addClass(`noveler-storyline-link-button-${kind}`);
+    return button;
   }
 
   restoreSceneTypographySettings() {
@@ -2123,10 +2183,18 @@ class NovelerView extends ItemView {
   }
 
   onDocumentPointerDown(event) {
+    const target = event.target;
+    if (
+      this.storyLineContextSubmenuEl
+      && target instanceof Node
+      && !this.storyLineContextSubmenuEl.contains(target)
+      && !(this.storyLineContextAnchorEl && this.storyLineContextAnchorEl.contains(target))
+    ) {
+      this.closeStoryLineContextSubmenu();
+    }
     if (!this.colorPopoverEl) {
       return;
     }
-    const target = event.target;
     if (
       target instanceof Node
       && (this.colorPopoverEl.contains(target) || (this.colorControlButtonEl && this.colorControlButtonEl.contains(target)))
@@ -3158,6 +3226,7 @@ class NovelerView extends ItemView {
       this.revealCaretAfterPagination = false;
       window.requestAnimationFrame(() => this.revealCurrentCaretPage());
     }
+    this.scheduleStoryLineVisualLinks();
   }
 
   collectEditorContentNodes(root) {
@@ -3879,6 +3948,7 @@ class NovelerView extends ItemView {
       this.updateEditorFrameHeight();
       this.scheduleFocusTransition(selectionState);
     }
+    this.scheduleStoryLineVisualLinks();
   }
 
   updateRulers() {
@@ -4463,6 +4533,9 @@ class NovelerView extends ItemView {
   }
 
   onEditorClick(event) {
+    if (this.openStoryLineLinkAtPoint(event)) {
+      return;
+    }
     const target = event.target;
     if (!target || !target.closest) {
       return;
@@ -5091,8 +5164,12 @@ class NovelerView extends ItemView {
 
   openContextMenu(event) {
     event.preventDefault();
+    this.closeStoryLineContextSubmenu();
     this.captureSelection();
+    const selectedText = this.getSelectedTextForStoryLineCodex();
+    const storyLine = this.getStoryLinePluginForCodex();
     const menu = new Menu();
+    this.storyLineContextMenu = menu;
     menu.addItem((item) => item.setTitle("Bold").setIcon("bold").onClick(() => this.format("bold")));
     menu.addItem((item) => item.setTitle("Italic").setIcon("italic").onClick(() => this.format("italic")));
     menu.addItem((item) => item.setTitle("Underline").setIcon("underline").onClick(() => this.format("underline")));
@@ -5105,7 +5182,825 @@ class NovelerView extends ItemView {
     menu.addItem((item) => item.setTitle("Remove double spaces").setIcon("space").onClick(() => this.cleanupDocument({ doubleSpaces: true })));
     menu.addItem((item) => item.setTitle("Normalize line breaks").setIcon("wrap-text").onClick(() => this.cleanupDocument({ lineBreaks: true })));
     menu.addItem((item) => item.setTitle("Smarten punctuation").setIcon("wand-sparkles").onClick(() => this.cleanupDocument({ punctuation: true })));
+    if (storyLine) {
+      menu.addSeparator();
+      this.addStoryLineContextCategory(menu, storyLine, "character", "Characters >", "users", selectedText);
+      this.addStoryLineContextCategory(menu, storyLine, "location", "Locations >", "map-pin", selectedText);
+      this.addStoryLineContextCategory(menu, storyLine, "item", "Items >", "package", selectedText);
+    }
     menu.showAtMouseEvent(event);
+  }
+
+  addStoryLineContextCategory(menu, storyLine, kind, title, icon, selectedText) {
+    menu.addItem((item) => {
+      item.setTitle(title).setIcon(icon);
+      const anchor = item.dom;
+      if (!anchor) {
+        item.onClick((clickEvent) => {
+          const clickAnchor = clickEvent.currentTarget && typeof clickEvent.currentTarget.getBoundingClientRect === "function"
+            ? clickEvent.currentTarget
+            : this.editorEl;
+          this.openStoryLineContextSubmenu(clickAnchor, storyLine, kind, selectedText);
+        });
+        return;
+      }
+      anchor.addClass("noveler-storyline-context-parent");
+      anchor.setAttribute("aria-haspopup", "menu");
+      const openSubmenu = () => {
+        this.cancelStoryLineContextClose();
+        this.openStoryLineContextSubmenu(anchor, storyLine, kind, selectedText);
+      };
+      anchor.addEventListener("pointerenter", openSubmenu);
+      anchor.addEventListener("focusin", openSubmenu);
+      anchor.addEventListener("pointerleave", () => this.scheduleStoryLineContextClose());
+      anchor.addEventListener("click", (clickEvent) => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        openSubmenu();
+      });
+    });
+  }
+
+  getStoryLineContextEntries(storyLine, kind) {
+    let entries = [];
+    if (kind === "character" && storyLine.characterManager && typeof storyLine.characterManager.getAllCharacters === "function") {
+      entries = storyLine.characterManager.getAllCharacters();
+    } else if (kind === "location" && storyLine.locationManager && typeof storyLine.locationManager.getAllLocations === "function") {
+      entries = storyLine.locationManager.getAllLocations();
+    } else if (kind === "item" && storyLine.codexManager && typeof storyLine.codexManager.getEntries === "function") {
+      entries = storyLine.codexManager.getEntries("items");
+    }
+    return entries
+      .filter((entry) => entry && entry.filePath && entry.name)
+      .slice()
+      .sort((left, right) => String(left.name).localeCompare(String(right.name), undefined, { sensitivity: "base" }));
+  }
+
+  openStoryLineContextSubmenu(anchor, storyLine, kind, selectedText) {
+    if (this.storyLineContextAnchorEl === anchor && this.storyLineContextSubmenuEl) {
+      return;
+    }
+    this.closeStoryLineContextSubmenu();
+    this.storyLineContextAnchorEl = anchor;
+
+    const labels = {
+      character: { singular: "Character", plural: "characters", createIcon: "user-round-plus", icon: "users" },
+      location: { singular: "Location", plural: "locations", createIcon: "map-pin-plus-inside", icon: "map-pin" },
+      item: { singular: "Item", plural: "items", createIcon: "package-plus", icon: "package" }
+    };
+    const label = labels[kind];
+    const entries = this.getStoryLineContextEntries(storyLine, kind);
+    const panel = document.body.createDiv({
+      cls: "menu noveler-storyline-context-submenu",
+      attr: { role: "menu", "aria-label": `${label.singular} options` }
+    });
+    const menuHost = this.storyLineContextMenu && this.storyLineContextMenu.dom;
+    if (menuHost) {
+      menuHost.addClass("noveler-storyline-context-menu-host");
+      menuHost.appendChild(panel);
+    }
+    this.storyLineContextSubmenuEl = panel;
+    panel.addEventListener("pointerenter", () => this.cancelStoryLineContextClose());
+    panel.addEventListener("pointerleave", () => this.scheduleStoryLineContextClose());
+    panel.addEventListener("pointerdown", (pointerEvent) => pointerEvent.stopPropagation());
+    panel.addEventListener("mousedown", (mouseEvent) => mouseEvent.stopPropagation());
+    panel.addEventListener("click", (clickEvent) => clickEvent.stopPropagation());
+
+    const createButton = panel.createEl("button", {
+      cls: "noveler-storyline-context-create",
+      attr: { type: "button", role: "menuitem" }
+    });
+    const createIcon = createButton.createSpan({ cls: "noveler-storyline-context-icon" });
+    setIcon(createIcon, label.createIcon);
+    createButton.createSpan({ text: `New ${label.singular}` });
+    createButton.addEventListener("click", async () => {
+      this.hideStoryLineContextMenus();
+      const entryName = await this.promptForStoryLineEntryName(kind, selectedText);
+      if (entryName) {
+        await this.createStoryLineCodexEntry(kind, entryName);
+      }
+    });
+
+    const search = panel.createEl("input", {
+      cls: "noveler-storyline-context-search",
+      attr: {
+        type: "search",
+        placeholder: `Search ${label.plural}`,
+        "aria-label": `Search ${label.plural}`
+      }
+    });
+    const list = panel.createDiv({ cls: "noveler-storyline-context-list", attr: { role: "group" } });
+    const renderEntries = () => {
+      list.empty();
+      const query = search.value.trim().toLocaleLowerCase();
+      const filtered = entries.filter((entry) => {
+        const searchable = [
+          entry.name,
+          ...this.splitStoryLineAliases(entry.nickname),
+          ...this.splitStoryLineAliases(entry.aliases),
+          ...(kind === "item" ? this.getStoryLineItemAliases(entry, storyLine) : [])
+        ].join(" ").toLocaleLowerCase();
+        return !query || searchable.includes(query);
+      });
+      if (!filtered.length) {
+        list.createDiv({ cls: "noveler-storyline-context-empty", text: `No ${label.plural} found` });
+        return;
+      }
+      for (const entry of filtered) {
+        const entryButton = list.createEl("button", {
+          cls: "noveler-storyline-context-entry",
+          attr: { type: "button", role: "menuitem", title: String(entry.name) }
+        });
+        const entryIcon = entryButton.createSpan({ cls: "noveler-storyline-context-icon" });
+        setIcon(entryIcon, label.icon);
+        entryButton.createSpan({ cls: "noveler-storyline-context-entry-name", text: String(entry.name) });
+        entryButton.addEventListener("click", async () => {
+          this.hideStoryLineContextMenus();
+          try {
+            await this.addSelectedTextToStoryLineAliases(storyLine, kind, entry, selectedText);
+            await this.navigateToStoryLineEntry(kind, entry);
+          } catch (error) {
+            console.error("Noveler could not update or open the StoryLine entry.", error);
+            new Notice("Could not update or open the StoryLine entry.");
+          }
+        });
+      }
+    };
+    search.addEventListener("input", renderEntries);
+    renderEntries();
+    this.positionStoryLineContextSubmenu(anchor, panel);
+  }
+
+  positionStoryLineContextSubmenu(anchor, panel) {
+    const anchorRect = anchor.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const gap = 4;
+    let left = anchorRect.right + gap;
+    if (left + panelRect.width > window.innerWidth - 8) {
+      left = Math.max(8, anchorRect.left - panelRect.width - gap);
+    }
+    const top = Math.max(8, Math.min(anchorRect.top, window.innerHeight - panelRect.height - 8));
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  }
+
+  scheduleStoryLineContextClose() {
+    this.cancelStoryLineContextClose();
+    this.storyLineContextCloseTimer = window.setTimeout(() => {
+      this.storyLineContextCloseTimer = null;
+      const panel = this.storyLineContextSubmenuEl;
+      const activeElement = panel && panel.ownerDocument ? panel.ownerDocument.activeElement : null;
+      if (panel && (panel.matches(":hover") || (activeElement && panel.contains(activeElement)))) {
+        return;
+      }
+      this.closeStoryLineContextSubmenu();
+    }, 180);
+  }
+
+  cancelStoryLineContextClose() {
+    if (this.storyLineContextCloseTimer) {
+      window.clearTimeout(this.storyLineContextCloseTimer);
+      this.storyLineContextCloseTimer = null;
+    }
+  }
+
+  closeStoryLineContextSubmenu() {
+    this.cancelStoryLineContextClose();
+    if (this.storyLineContextSubmenuEl) {
+      this.storyLineContextSubmenuEl.remove();
+      this.storyLineContextSubmenuEl = null;
+    }
+    this.storyLineContextAnchorEl = null;
+  }
+
+  hideStoryLineContextMenus() {
+    this.closeStoryLineContextSubmenu();
+    if (this.storyLineContextMenu && typeof this.storyLineContextMenu.hide === "function") {
+      this.storyLineContextMenu.hide();
+    }
+    this.storyLineContextMenu = null;
+  }
+
+  promptForStoryLineEntryName(kind, selectedText) {
+    const labels = { character: "Character", location: "Location", item: "Item" };
+    const initialName = String(selectedText || "").replace(/\s+/g, " ").trim();
+    return new Promise((resolve) => {
+      const modal = new Modal(this.plugin.app);
+      let settled = false;
+      const finish = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+        modal.close();
+      };
+      modal.onOpen = () => {
+        modal.titleEl.setText(`New ${labels[kind]}`);
+        let name = initialName;
+        let createButton;
+        const updateButton = () => {
+          if (createButton) {
+            createButton.setDisabled(!name || name.length > 120);
+          }
+        };
+        new Setting(modal.contentEl)
+          .setName("Name")
+          .setDesc("This name is used for both the StoryLine entry and its Markdown filename.")
+          .addText((text) => {
+            text.setValue(initialName).setPlaceholder(`${labels[kind]} name`).onChange((value) => {
+              name = value.replace(/\s+/g, " ").trim();
+              updateButton();
+            });
+            text.inputEl.addEventListener("keydown", (keyEvent) => {
+              if (keyEvent.key === "Enter" && name && name.length <= 120) {
+                keyEvent.preventDefault();
+                finish(name);
+              }
+            });
+            window.setTimeout(() => {
+              text.inputEl.focus();
+              text.inputEl.select();
+            }, 0);
+          });
+        new Setting(modal.contentEl)
+          .addButton((button) => button.setButtonText("Cancel").onClick(() => finish(null)))
+          .addButton((button) => {
+            createButton = button;
+            button.setButtonText("Create").setCta().onClick(() => finish(name));
+            updateButton();
+          });
+      };
+      modal.onClose = () => {
+        modal.contentEl.empty();
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      };
+      modal.open();
+    });
+  }
+
+  async addSelectedTextToStoryLineAliases(storyLine, kind, entry, selectedText) {
+    if ((kind !== "character" && kind !== "location") || !entry) {
+      return false;
+    }
+    const alias = String(selectedText || "").replace(/\s+/g, " ").trim();
+    if (!alias || alias.toLocaleLowerCase() === String(entry.name || "").trim().toLocaleLowerCase()) {
+      return false;
+    }
+    const existingAliases = this.splitStoryLineAliases(entry.nickname);
+    if (existingAliases.some((existing) => existing.toLocaleLowerCase() === alias.toLocaleLowerCase())) {
+      return false;
+    }
+
+    const currentNickname = String(entry.nickname || "").trimEnd();
+    const updatedEntry = {
+      ...entry,
+      nickname: currentNickname ? `${currentNickname}\n${alias}` : alias
+    };
+    if (kind === "character") {
+      if (!storyLine.characterManager || typeof storyLine.characterManager.saveCharacter !== "function") {
+        throw new Error("StoryLine character manager cannot save aliases");
+      }
+      await storyLine.characterManager.saveCharacter(updatedEntry);
+    } else {
+      if (!storyLine.locationManager || typeof storyLine.locationManager.saveLocation !== "function") {
+        throw new Error("StoryLine location manager cannot save aliases");
+      }
+      await storyLine.locationManager.saveLocation(updatedEntry);
+    }
+    if (typeof storyLine.reloadEntities === "function") {
+      await storyLine.reloadEntities();
+    }
+    if (typeof storyLine.refreshOpenViews === "function") {
+      await storyLine.refreshOpenViews();
+    }
+    this.scheduleStoryLineVisualLinks();
+    new Notice(`Added "${alias}" as an alias for "${entry.name}".`);
+    return true;
+  }
+
+  getSelectedTextForStoryLineCodex() {
+    const range = this.getSelectionRange() || this.lastRange;
+    if (!range || range.collapsed) {
+      return "";
+    }
+    return range.toString().replace(/\s+/g, " ").trim();
+  }
+
+  getStoryLinePluginForCodex() {
+    const plugins = this.plugin.app.plugins;
+    if (!plugins) {
+      return null;
+    }
+    if (plugins.plugins && plugins.plugins.storyline) {
+      return plugins.plugins.storyline;
+    }
+    return typeof plugins.getPlugin === "function" ? plugins.getPlugin("storyline") : null;
+  }
+
+  async createStoryLineCodexEntry(kind, selectedText) {
+    const name = String(selectedText || "").replace(/\s+/g, " ").trim();
+    if (!name) {
+      new Notice("Select a name in the manuscript first.");
+      return;
+    }
+    if (name.length > 120) {
+      new Notice("StoryLine Codex names must be 120 characters or fewer.");
+      return;
+    }
+
+    const storyLine = this.getStoryLinePluginForCodex();
+    if (!storyLine || !storyLine.sceneManager) {
+      new Notice("Enable StoryLine before creating Codex entries.");
+      return;
+    }
+
+    try {
+      if (typeof storyLine.sceneManager.initialize === "function") {
+        await storyLine.sceneManager.initialize();
+      }
+      if (!storyLine.sceneManager.activeProject) {
+        new Notice("Open a StoryLine project before creating Codex entries.");
+        return;
+      }
+
+      if (kind === "item") {
+        const enabledCategories = Array.isArray(storyLine.settings && storyLine.settings.codexEnabledCategories)
+          ? storyLine.settings.codexEnabledCategories
+          : [];
+        if (!enabledCategories.includes("items")) {
+          storyLine.settings.codexEnabledCategories = [...enabledCategories, "items"];
+          if (typeof storyLine.saveSettings === "function") {
+            await storyLine.saveSettings();
+          }
+        }
+      }
+
+      if (typeof storyLine.reloadEntities === "function") {
+        await storyLine.reloadEntities();
+      }
+
+      let entry;
+      if (kind === "character") {
+        if (!storyLine.characterManager || typeof storyLine.characterManager.createCharacter !== "function") {
+          throw new Error("StoryLine character manager is unavailable");
+        }
+        entry = await storyLine.characterManager.createCharacter(storyLine.sceneManager.getCharacterFolder(), name);
+      } else if (kind === "location") {
+        if (!storyLine.locationManager || typeof storyLine.locationManager.createLocation !== "function") {
+          throw new Error("StoryLine location manager is unavailable");
+        }
+        entry = await storyLine.locationManager.createLocation(storyLine.sceneManager.getLocationFolder(), name);
+      } else {
+        if (!storyLine.codexManager || typeof storyLine.codexManager.createEntry !== "function") {
+          throw new Error("StoryLine Codex manager is unavailable");
+        }
+        entry = await storyLine.codexManager.createEntry(storyLine.sceneManager.getCodexFolder(), "items", name);
+      }
+
+      if (typeof storyLine.reloadEntities === "function") {
+        await storyLine.reloadEntities();
+      }
+      if (typeof storyLine.refreshOpenViews === "function") {
+        await storyLine.refreshOpenViews();
+      }
+      await this.navigateToStoryLineEntry(kind, entry, { onlyExisting: true });
+      this.scheduleStoryLineVisualLinks();
+      const label = kind === "item" ? "Item" : kind.charAt(0).toUpperCase() + kind.slice(1);
+      new Notice(`${label} "${name}" created in StoryLine.`);
+      return entry;
+    } catch (error) {
+      console.error("Noveler could not create the StoryLine Codex entry.", error);
+      new Notice(`Could not create StoryLine ${kind}: ${error.message || String(error)}`);
+      return null;
+    }
+  }
+
+  getStoryLineLeaves(storyLine) {
+    const leaves = [];
+    const addLeaf = (leaf) => {
+      if (!leaf || leaves.includes(leaf) || !leaf.view) {
+        return;
+      }
+      const viewType = typeof leaf.view.getViewType === "function" ? leaf.view.getViewType() : "";
+      if (leaf.view.plugin === storyLine || String(viewType).startsWith("story-line-")) {
+        leaves.push(leaf);
+      }
+    };
+    if (this.plugin.app.workspace && typeof this.plugin.app.workspace.iterateAllLeaves === "function") {
+      this.plugin.app.workspace.iterateAllLeaves(addLeaf);
+    }
+    const preferredLeaf = storyLine && storyLine.storyLeaf;
+    const preferredIndex = leaves.indexOf(preferredLeaf);
+    if (preferredIndex > 0) {
+      leaves.splice(preferredIndex, 1);
+      leaves.unshift(preferredLeaf);
+    }
+    return leaves;
+  }
+
+  async navigateToStoryLineEntry(kind, entry, options = {}) {
+    const storyLine = this.getStoryLinePluginForCodex();
+    const filePath = normalizeVaultPath(entry && entry.filePath);
+    if (!storyLine || !filePath) {
+      return false;
+    }
+
+    const viewType = kind === "character"
+      ? "story-line-character"
+      : kind === "location"
+        ? "story-line-location"
+        : "story-line-codex";
+    const leaves = this.getStoryLineLeaves(storyLine);
+    let leaf = leaves.find((candidate) => candidate.view.getViewType() === viewType) || leaves[0];
+    if (!leaf && !options.onlyExisting) {
+      leaf = this.plugin.app.workspace.getLeaf(true);
+    }
+    if (!leaf) {
+      return false;
+    }
+
+    if (!leaf.view || leaf.view.getViewType() !== viewType) {
+      await leaf.setViewState({ type: viewType, active: true, state: {} });
+    }
+    const view = leaf.view;
+    if (kind === "character") {
+      view.selectedCharacter = filePath;
+      if (view.rootContainer && typeof view.renderView === "function") {
+        view.renderView(view.rootContainer);
+      }
+    } else if (kind === "location") {
+      view.selectedItem = filePath;
+      if (view.rootContainer && typeof view.renderView === "function") {
+        view.renderView(view.rootContainer);
+      }
+    } else if (typeof view.navigateToEntry === "function") {
+      await view.navigateToEntry(filePath);
+    } else {
+      view.activeCategory = "items";
+      view.selectedEntry = filePath;
+      if (view.rootContainer && typeof view.renderView === "function") {
+        view.renderView(view.rootContainer);
+      }
+    }
+    if (typeof this.plugin.app.workspace.revealLeaf === "function") {
+      await this.plugin.app.workspace.revealLeaf(leaf);
+    }
+    return true;
+  }
+
+  registerStoryLineEntityLinkUpdates() {
+    const vault = this.plugin.app && this.plugin.app.vault;
+    if (!vault || typeof vault.on !== "function" || typeof this.registerEvent !== "function") {
+      return;
+    }
+    const handleEntityChange = (file, oldPath) => {
+      const currentPath = file && file.path ? file.path : "";
+      if (this.isStoryLineEntityPath(currentPath) || this.isStoryLineEntityPath(oldPath)) {
+        this.scheduleStoryLineEntityReload();
+      }
+    };
+    this.registerEvent(vault.on("modify", handleEntityChange));
+    this.registerEvent(vault.on("create", handleEntityChange));
+    this.registerEvent(vault.on("delete", handleEntityChange));
+    this.registerEvent(vault.on("rename", handleEntityChange));
+  }
+
+  isStoryLineEntityPath(path) {
+    const vaultPath = normalizeVaultPath(path);
+    const storyLine = this.getStoryLinePluginForCodex();
+    if (!vaultPath || !storyLine || !storyLine.sceneManager) {
+      return false;
+    }
+    const folderGetters = ["getCharacterFolder", "getLocationFolder", "getCodexFolder"];
+    for (const getterName of folderGetters) {
+      try {
+        const folder = typeof storyLine.sceneManager[getterName] === "function"
+          ? normalizeVaultPath(storyLine.sceneManager[getterName]())
+          : "";
+        if (folder && (vaultPath === folder || vaultPath.startsWith(`${folder}/`))) {
+          return true;
+        }
+      } catch (error) {
+        // StoryLine may not have an active project while its workspace is initializing.
+      }
+    }
+    return false;
+  }
+
+  scheduleStoryLineEntityReload() {
+    if (this.storyLineEntityRefreshTimer) {
+      window.clearTimeout(this.storyLineEntityRefreshTimer);
+    }
+    this.storyLineEntityRefreshTimer = window.setTimeout(async () => {
+      this.storyLineEntityRefreshTimer = null;
+      const storyLine = this.getStoryLinePluginForCodex();
+      try {
+        if (storyLine && typeof storyLine.reloadEntities === "function") {
+          await storyLine.reloadEntities();
+        }
+        this.scheduleStoryLineVisualLinks();
+      } catch (error) {
+        console.warn("Noveler could not refresh StoryLine links after an entity change.", error);
+      }
+    }, 250);
+  }
+
+  async toggleStoryLineVisualLinks(kind) {
+    const bridge = this.plugin.settings.storyLineBridge;
+    if (!bridge.visualLinkCategories || typeof bridge.visualLinkCategories !== "object") {
+      bridge.visualLinkCategories = clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkCategories);
+    }
+    bridge.visualLinkCategories[kind] = bridge.visualLinkCategories[kind] === false;
+    bridge.visualLinks = Object.values(bridge.visualLinkCategories).some((enabled) => enabled !== false);
+    await this.plugin.saveSettings();
+    this.buildStatusControls();
+    this.scheduleStoryLineVisualLinks();
+  }
+
+  scheduleStoryLineVisualLinks() {
+    if (this.storyLineLinkFrame) {
+      window.cancelAnimationFrame(this.storyLineLinkFrame);
+    }
+    this.storyLineLinkFrame = window.requestAnimationFrame(() => {
+      this.storyLineLinkFrame = 0;
+      this.updateStoryLineVisualLinks();
+    });
+  }
+
+  clearStoryLineVisualLinks() {
+    this.storyLineLinkRanges = [];
+    if (typeof CSS !== "undefined" && CSS.highlights) {
+      CSS.highlights.delete("noveler-storyline-character-links");
+      CSS.highlights.delete("noveler-storyline-location-links");
+      CSS.highlights.delete("noveler-storyline-item-links");
+    }
+    if (this.editorEl) {
+      this.editorEl.removeClass("has-storyline-links");
+      this.clearStoryLineLinkHover();
+    }
+  }
+
+  splitStoryLineAliases(value) {
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => this.splitStoryLineAliases(item));
+    }
+    return String(value || "").split(/[,;\r\n]+/).map((alias) => alias.trim()).filter(Boolean);
+  }
+
+  isStoryLineAliasFieldKey(key) {
+    const normalized = String(key || "").toLocaleLowerCase().replace(/[^a-z0-9]+/g, "");
+    return normalized === "nickname"
+      || normalized === "alias"
+      || normalized === "aliases"
+      || normalized.endsWith("nicknamealias")
+      || normalized.endsWith("nicknamealiases");
+  }
+
+  getStoryLineItemAliases(entry, storyLine) {
+    const aliases = [];
+    const collect = (source) => {
+      if (!source || typeof source !== "object" || Array.isArray(source)) {
+        return;
+      }
+      for (const [key, value] of Object.entries(source)) {
+        if (this.isStoryLineAliasFieldKey(key)) {
+          aliases.push(...this.splitStoryLineAliases(value));
+        }
+      }
+    };
+    collect(entry);
+    collect(entry && entry.custom);
+    collect(entry && entry.universalFields);
+    const fieldTemplates = storyLine
+      && storyLine.fieldTemplates
+      && typeof storyLine.fieldTemplates.getAll === "function"
+      ? storyLine.fieldTemplates.getAll()
+      : [];
+    for (const template of fieldTemplates) {
+      if (
+        !template
+        || (template.category && template.category !== "items")
+        || (!this.isStoryLineAliasFieldKey(template.label) && !this.isStoryLineAliasFieldKey(template.topLevelKey))
+      ) {
+        continue;
+      }
+      if (entry && entry.universalFields && template.id) {
+        aliases.push(...this.splitStoryLineAliases(entry.universalFields[template.id]));
+      }
+      if (entry && template.topLevelKey) {
+        aliases.push(...this.splitStoryLineAliases(entry[template.topLevelKey]));
+      }
+    }
+    return Array.from(new Map(aliases.map((alias) => [alias.toLocaleLowerCase(), alias])).values());
+  }
+
+  getStoryLineLinkTargets(storyLine) {
+    const targetsByAlias = new Map();
+    const ambiguous = new Set();
+    const addTarget = (alias, kind, entry) => {
+      const label = String(alias || "").replace(/\s+/g, " ").trim();
+      const filePath = normalizeVaultPath(entry && entry.filePath);
+      if (label.length < 2 || !filePath) {
+        return;
+      }
+      const key = label.toLocaleLowerCase();
+      const existing = targetsByAlias.get(key);
+      if (existing && existing.filePath !== filePath) {
+        ambiguous.add(key);
+        targetsByAlias.delete(key);
+        return;
+      }
+      if (!ambiguous.has(key)) {
+        targetsByAlias.set(key, { alias: label, kind, filePath });
+      }
+    };
+
+    const characters = storyLine.characterManager && typeof storyLine.characterManager.getAllCharacters === "function"
+      ? storyLine.characterManager.getAllCharacters()
+      : [];
+    const charactersByName = new Map(characters.map((entry) => [String(entry.name || "").toLocaleLowerCase(), entry]));
+    const firstWordCounts = new Map();
+    const lastWordCounts = new Map();
+    const characterNameParts = new Map();
+    for (const entry of characters) {
+      const parts = String(entry.name || "").trim().split(/\s+/).filter(Boolean);
+      characterNameParts.set(entry.filePath, parts);
+      if (!parts.length) {
+        continue;
+      }
+      const firstKey = parts[0].toLocaleLowerCase();
+      const lastKey = parts[parts.length - 1].toLocaleLowerCase();
+      firstWordCounts.set(firstKey, (firstWordCounts.get(firstKey) || 0) + 1);
+      lastWordCounts.set(lastKey, (lastWordCounts.get(lastKey) || 0) + 1);
+    }
+    for (const entry of characters) {
+      addTarget(entry.name, "character", entry);
+      const parts = characterNameParts.get(entry.filePath) || [];
+      if (parts.length > 1) {
+        addTarget(`${parts[0]} ${parts[parts.length - 1]}`, "character", entry);
+      }
+      if (parts.length && firstWordCounts.get(parts[0].toLocaleLowerCase()) === 1) {
+        addTarget(parts[0], "character", entry);
+      }
+      if (parts.length > 1 && lastWordCounts.get(parts[parts.length - 1].toLocaleLowerCase()) === 1) {
+        addTarget(parts[parts.length - 1], "character", entry);
+      }
+      for (const alias of [
+        ...this.splitStoryLineAliases(entry.nickname),
+        ...this.splitStoryLineAliases(entry.aliases)
+      ]) {
+        addTarget(alias, "character", entry);
+      }
+    }
+    if (storyLine.characterManager && typeof storyLine.characterManager.buildAliasMap === "function") {
+      const aliasMap = storyLine.characterManager.buildAliasMap(storyLine.settings && storyLine.settings.characterAliases);
+      for (const [alias, canonicalName] of aliasMap) {
+        addTarget(alias, "character", charactersByName.get(String(canonicalName || "").toLocaleLowerCase()));
+      }
+    }
+
+    const locations = storyLine.locationManager && typeof storyLine.locationManager.getAllLocations === "function"
+      ? storyLine.locationManager.getAllLocations()
+      : [];
+    for (const entry of locations) {
+      addTarget(entry.name, "location", entry);
+      for (const alias of [
+        ...this.splitStoryLineAliases(entry.nickname),
+        ...this.splitStoryLineAliases(entry.aliases)
+      ]) {
+        addTarget(alias, "location", entry);
+      }
+    }
+
+    const items = storyLine.codexManager && typeof storyLine.codexManager.getEntries === "function"
+      ? storyLine.codexManager.getEntries("items")
+      : [];
+    for (const entry of items) {
+      addTarget(entry.name, "item", entry);
+      for (const alias of this.getStoryLineItemAliases(entry, storyLine)) {
+        addTarget(alias, "item", entry);
+      }
+    }
+    return Array.from(targetsByAlias.values()).sort((left, right) => right.alias.length - left.alias.length);
+  }
+
+  isStoryLineWordCharacter(character) {
+    return !!character && /[\p{L}\p{N}_]/u.test(character);
+  }
+
+  updateStoryLineVisualLinks() {
+    this.clearStoryLineVisualLinks();
+    if (!this.editorEl) {
+      return;
+    }
+    const bridge = this.plugin.settings.storyLineBridge;
+    const categories = bridge.visualLinkCategories || DEFAULT_SETTINGS.storyLineBridge.visualLinkCategories;
+    const colors = bridge.visualLinkColors || DEFAULT_SETTINGS.storyLineBridge.visualLinkColors;
+    this.editorEl.style.setProperty("--noveler-storyline-character-link-color", normalizeHexColor(colors.character));
+    this.editorEl.style.setProperty("--noveler-storyline-location-link-color", normalizeHexColor(colors.location));
+    this.editorEl.style.setProperty("--noveler-storyline-item-link-color", normalizeHexColor(colors.item));
+    if (!Object.values(categories).some((enabled) => enabled !== false)) {
+      return;
+    }
+    const storyLine = this.getStoryLinePluginForCodex();
+    if (!storyLine || typeof CSS === "undefined" || !CSS.highlights || typeof Highlight === "undefined") {
+      return;
+    }
+    const targets = this.getStoryLineLinkTargets(storyLine).filter((target) => categories[target.kind] !== false);
+    if (!targets.length) {
+      return;
+    }
+
+    const ranges = [];
+    const walker = document.createTreeWalker(this.editorEl, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const text = node.nodeValue || "";
+      const lowerText = text.toLocaleLowerCase();
+      const occupied = new Uint8Array(text.length);
+      for (const target of targets) {
+        const needle = target.alias.toLocaleLowerCase();
+        let offset = lowerText.indexOf(needle);
+        while (offset !== -1) {
+          const end = offset + needle.length;
+          const hasOverlap = occupied.subarray(offset, end).some((value) => value !== 0);
+          const validStart = !this.isStoryLineWordCharacter(text[offset - 1]) || !this.isStoryLineWordCharacter(text[offset]);
+          const validEnd = !this.isStoryLineWordCharacter(text[end - 1]) || !this.isStoryLineWordCharacter(text[end]);
+          if (!hasOverlap && validStart && validEnd) {
+            const range = document.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, end);
+            occupied.fill(1, offset, end);
+            ranges.push({ range, kind: target.kind, filePath: target.filePath });
+          }
+          offset = lowerText.indexOf(needle, offset + Math.max(1, needle.length));
+        }
+      }
+    }
+    if (!ranges.length) {
+      return;
+    }
+    this.storyLineLinkRanges = ranges;
+    for (const kind of ["character", "location", "item"]) {
+      const categoryRanges = ranges.filter((item) => item.kind === kind).map((item) => item.range);
+      if (categoryRanges.length) {
+        CSS.highlights.set(`noveler-storyline-${kind}-links`, new Highlight(...categoryRanges));
+      }
+    }
+    this.editorEl.addClass("has-storyline-links");
+  }
+
+  getStoryLineLinkAtPoint(x, y) {
+    return this.storyLineLinkRanges.find((item) => Array.from(item.range.getClientRects()).some((rect) => (
+      x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+    ))) || null;
+  }
+
+  updateStoryLineLinkHover(event) {
+    if (!this.editorEl) {
+      return;
+    }
+    this.storyLineHoverPoint = { x: event.clientX, y: event.clientY };
+    if (this.storyLineHoverFrame) {
+      return;
+    }
+    this.storyLineHoverFrame = window.requestAnimationFrame(() => {
+      this.storyLineHoverFrame = 0;
+      const point = this.storyLineHoverPoint;
+      this.editorEl.toggleClass("is-storyline-link-hovered", !!(point && this.getStoryLineLinkAtPoint(point.x, point.y)));
+    });
+  }
+
+  clearStoryLineLinkHover() {
+    this.storyLineHoverPoint = null;
+    if (this.storyLineHoverFrame) {
+      window.cancelAnimationFrame(this.storyLineHoverFrame);
+      this.storyLineHoverFrame = 0;
+    }
+    if (this.editorEl) {
+      this.editorEl.removeClass("is-storyline-link-hovered");
+    }
+  }
+
+  openStoryLineLinkAtPoint(event) {
+    if (!this.storyLineLinkRanges.length) {
+      return false;
+    }
+    const link = this.getStoryLineLinkAtPoint(event.clientX, event.clientY);
+    if (!link) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.navigateToStoryLineEntry(link.kind, { filePath: link.filePath }).catch((error) => {
+      console.error("Noveler could not open the StoryLine entry.", error);
+      new Notice("Could not open the StoryLine entry.");
+    });
+    return true;
   }
 
   cleanupDocument(options) {
@@ -5410,6 +6305,12 @@ class NovelerSettingTab extends PluginSettingTab {
     if (!draft.storyLineBridge || typeof draft.storyLineBridge !== "object") {
       draft.storyLineBridge = clone(DEFAULT_SETTINGS.storyLineBridge);
     }
+    if (!draft.storyLineBridge.visualLinkCategories || typeof draft.storyLineBridge.visualLinkCategories !== "object") {
+      draft.storyLineBridge.visualLinkCategories = clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkCategories);
+    }
+    if (!draft.storyLineBridge.visualLinkColors || typeof draft.storyLineBridge.visualLinkColors !== "object") {
+      draft.storyLineBridge.visualLinkColors = clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkColors);
+    }
     const saveDraft = async () => {
       draft.typography = clone(this.plugin.globalTypography || draft.typography || DEFAULT_SETTINGS.typography);
       this.plugin.settings = mergeSettings(draft);
@@ -5704,6 +6605,26 @@ class NovelerSettingTab extends PluginSettingTab {
           draft.storyLineBridge.enableEpubExport = value;
         }));
 
+    const addStoryLineLinkSetting = (name, kind) => {
+      new Setting(containerEl)
+        .setName(`${name} links`)
+        .setDesc(`Control the visibility and color of visual-only ${name.toLowerCase()} links.`)
+        .addToggle((toggle) => toggle
+          .setValue(draft.storyLineBridge.visualLinkCategories[kind] !== false)
+          .onChange((value) => {
+            draft.storyLineBridge.visualLinkCategories[kind] = value;
+            draft.storyLineBridge.visualLinks = Object.values(draft.storyLineBridge.visualLinkCategories).some((enabled) => enabled !== false);
+          }))
+        .addColorPicker((picker) => picker
+          .setValue(normalizeHexColor(draft.storyLineBridge.visualLinkColors[kind]))
+          .onChange((value) => {
+            draft.storyLineBridge.visualLinkColors[kind] = normalizeHexColor(value);
+          }));
+    };
+    addStoryLineLinkSetting("Character", "character");
+    addStoryLineLinkSetting("Location", "location");
+    addStoryLineLinkSetting("Item", "item");
+
     new Setting(containerEl)
       .setName("Antidote Connect")
       .setDesc("Allow Noveler to send the active manuscript to Antidote Connectix.")
@@ -5895,7 +6816,18 @@ const DEFAULT_SETTINGS = {
   storyLineRoot: "StoryLine",
   replaceStoryLineSceneOpens: true,
   replaceManuscriptView: true,
-  enableEpubExport: true
+  enableEpubExport: true,
+  visualLinks: true,
+  visualLinkCategories: {
+    character: true,
+    location: true,
+    item: true
+  },
+  visualLinkColors: {
+    character: "#8b5cf6",
+    location: "#2f9e73",
+    item: "#d97706"
+  }
 };
 
 const DEFAULT_EXPORT_OPTIONS = {
@@ -8638,7 +9570,18 @@ const STORYLINE_DEFAULTS = {
   storyLineRoot: "StoryLine",
   replaceStoryLineSceneOpens: true,
   replaceManuscriptView: true,
-  enableEpubExport: true
+  enableEpubExport: true,
+  visualLinks: true,
+  visualLinkCategories: {
+    character: true,
+    location: true,
+    item: true
+  },
+  visualLinkColors: {
+    character: "#8b5cf6",
+    location: "#2f9e73",
+    item: "#d97706"
+  }
 };
 
 function clone(value) {
