@@ -10,7 +10,9 @@ It bundles the Noveler manuscript writer, StoryLine scene routing, formatted exp
 
 If Noveler helps your writing workflow, you can support development through PayPal:
 
-[Support Noveler on PayPal](https://www.paypal.com/paypalme/yesterdaytotomorrow)
+[![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/paypalme/yesterdaytotomorrow)
+
+---
 
 ## Quick Start
 
@@ -23,6 +25,8 @@ If Noveler helps your writing workflow, you can support development through PayP
 7. Optional: enable Antidote Connect in Noveler settings if you use Antidote Connectix.
 
 <img width="1106" height="1013" alt="image" src="https://github.com/user-attachments/assets/2480bae4-3698-4afb-b801-7234b681cbec" />
+
+---
 
 ## Functionalities
 
@@ -198,6 +202,8 @@ On first load, Noveler can import an existing settings file from:
 
 After migration, future settings are saved inside the `noveler-a-storyline-expansion` plugin folder.
 
+---
+
 ## Key Features
 
 - **Unified Obsidian plugin**: Noveler, StoryLine bridge behavior, formatted exports, and Antidote Connect support live in one bundle.
@@ -213,6 +219,8 @@ After migration, future settings are saved inside the `noveler-a-storyline-expan
 - **Smart writing cleanup**: Smart quotes, smart dashes, auto-capitalization, smart indenting, double-space cleanup, and line-break normalization.
 - **Drag-and-drop import**: Markdown, text, and HTML files can be opened or imported into Noveler.
 - **Desktop-focused**: Built for Obsidian desktop, with desktop-only integrations such as PDF export and Antidote Connect.
+
+---
 
 ## How To Install
 
@@ -245,6 +253,8 @@ styles.css
 - Do not enable older separate Noveler bridge plugins alongside this bundle.
 - If you use StoryLine, keep StoryLine installed and configure the StoryLine root folder in Noveler settings.
 - If you use Antidote, enable Antidote Connect in Noveler settings and make sure Connectix is installed.
+
+---
 
 ## Licensing
 
