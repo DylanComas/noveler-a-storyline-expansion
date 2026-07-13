@@ -23,12 +23,31 @@
   color: var(--noveler-storyline-item-link-color, #d97706);
 }
 
+::highlight(noveler-annotation-highlight) {
+  color: var(--text-normal);
+  background-color: var(--text-highlight-bg, var(--background-modifier-hover));
+}
+
 .noveler-editor.is-storyline-link-hovered {
   cursor: pointer;
 }
 
 .noveler-storyline-context-menu-host {
   overflow: visible !important;
+}
+
+.noveler-storyline-context-parent .noveler-storyline-context-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+.noveler-storyline-context-chevron svg {
+  width: 14px;
+  height: 14px;
 }
 
 .noveler-storyline-context-submenu {
@@ -888,18 +907,506 @@
   background: var(--background-secondary);
 }
 
-.noveler-work-area.is-dragging-file::after {
-  content: "Drop to open in Noveler";
-  position: fixed;
-  inset: auto 24px 42px auto;
-  z-index: 10;
-  padding: 10px 14px;
-  border: 1px solid var(--interactive-accent);
+/* Settings */
+.noveler-settings {
+  --noveler-settings-radius: 8px;
+  max-width: 920px;
+  padding-bottom: 28px;
+}
+
+.noveler-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 2px 0 18px;
+}
+
+.noveler-settings-header h2,
+.noveler-settings-header p {
+  margin: 0;
+}
+
+.noveler-settings-header p {
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
+.noveler-settings-header-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--noveler-settings-radius);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.noveler-settings-header-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.noveler-settings-section {
+  margin: 0 0 10px;
+  overflow: clip;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--noveler-settings-accent);
+  border-radius: var(--noveler-settings-radius);
+  background: var(--background-primary-alt);
+}
+
+.noveler-settings-section > summary,
+.noveler-heading-style-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.noveler-settings-section > summary::-webkit-details-marker,
+.noveler-heading-style-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.noveler-settings-section > summary:hover,
+.noveler-heading-style-card > summary:hover {
+  background: var(--background-modifier-hover);
+}
+
+.noveler-settings-section-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
   border-radius: 6px;
-  background: var(--background-primary);
+  background: color-mix(in srgb, var(--noveler-settings-accent) 16%, transparent);
+  color: var(--noveler-settings-accent);
+}
+
+.noveler-settings-section-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.noveler-settings-section-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.noveler-settings-section-copy small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noveler-settings-section-chevron,
+.noveler-heading-chevron {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 140ms ease;
+}
+
+.noveler-settings-section-undo {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity 120ms ease, transform 120ms ease, background-color 120ms ease;
+}
+
+.noveler-settings-section-undo.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.noveler-settings-section-undo.is-visible:hover {
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  font-size: 13px;
+}
+
+.noveler-settings-section-undo svg {
+  width: 15px;
+  height: 15px;
+}
+
+.noveler-settings-section[open] > summary .noveler-settings-section-chevron,
+.noveler-heading-style-card[open] > summary .noveler-heading-chevron {
+  transform: rotate(180deg);
+}
+
+.noveler-settings-section-body {
+  padding: 2px 14px 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.noveler-settings-grid,
+.noveler-link-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+
+.noveler-settings .setting-item {
+  min-width: 0;
+  padding: 12px 2px;
+}
+
+.noveler-settings .setting-item-info {
+  min-width: 130px;
+}
+
+.noveler-settings .setting-item-control {
+  min-width: 0;
+}
+
+.noveler-settings select,
+.noveler-settings input[type="text"],
+.noveler-settings input[type="number"] {
+  border-color: var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.noveler-settings select {
+  background-repeat: no-repeat !important;
+}
+
+.noveler-integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.noveler-integration-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+}
+
+.noveler-integration-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.noveler-integration-card-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.noveler-integration-card-copy > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.noveler-integration-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #ef4444 14%, transparent);
+}
+
+.noveler-integration-card.is-disabled .noveler-integration-dot {
+  background: #eab308;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #eab308 14%, transparent);
+}
+
+.noveler-integration-card.is-enabled .noveler-integration-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #22c55e 14%, transparent);
+}
+
+.noveler-integration-card button {
+  flex: 0 0 auto;
+}
+
+.noveler-margin-editor {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+}
+
+.noveler-margin-editor-copy {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+.noveler-margin-editor-copy span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.noveler-margin-layout {
+  display: grid;
+  grid-template-areas:
+    ". top ."
+    "left page right"
+    ". bottom .";
+  grid-template-columns: 78px 110px 78px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+}
+
+.noveler-margin-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.noveler-margin-field.is-top { grid-area: top; }
+.noveler-margin-field.is-right { grid-area: right; }
+.noveler-margin-field.is-bottom { grid-area: bottom; }
+.noveler-margin-field.is-left { grid-area: left; }
+
+.noveler-margin-field.is-top,
+.noveler-margin-field.is-bottom {
+  width: 82px;
+  justify-self: center;
+}
+
+.noveler-margin-field.is-left {
+  width: 72px;
+  justify-self: end;
+}
+
+.noveler-margin-field.is-right {
+  width: 72px;
+  justify-self: start;
+}
+
+.noveler-margin-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.noveler-margin-control input {
+  width: 100%;
+  min-width: 54px;
+}
+
+.noveler-margin-page-preview {
+  display: grid;
+  width: 92px;
+  aspect-ratio: 0.72;
+  grid-area: page;
+  place-self: center;
+  padding: 14px 12px;
+  border: 1px solid var(--background-modifier-border-hover);
+  background: var(--background-primary-alt);
+  box-shadow: var(--shadow-s);
+}
+
+.noveler-margin-page-content {
+  border: 1px dashed var(--interactive-accent);
+  opacity: 0.65;
+}
+
+.noveler-heading-style-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.noveler-heading-style-card {
+  overflow: clip;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+}
+
+.noveler-heading-style-card > summary {
+  min-height: 44px;
+  padding: 6px 10px;
+}
+
+.noveler-heading-level {
+  display: grid;
+  width: 30px;
+  height: 26px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 5px;
+  background: color-mix(in srgb, #ec4899 14%, transparent);
+  color: #ec4899;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.noveler-heading-preview {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noveler-heading-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 2fr) repeat(4, minmax(90px, 1fr));
+  gap: 9px;
+  padding: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary-alt);
+}
+
+.noveler-heading-controls > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.noveler-heading-controls select,
+.noveler-heading-controls input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.noveler-heading-italic {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.noveler-link-color-grid {
+  margin-top: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.noveler-link-color-grid .setting-item-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.noveler-link-color-icon {
+  display: inline-flex;
+  order: -1;
+}
+
+.noveler-link-color-icon.is-character { color: #8b5cf6; }
+.noveler-link-color-icon.is-location { color: #2f9e73; }
+.noveler-link-color-icon.is-item { color: #d97706; }
+
+.noveler-settings-save-bar {
+  position: sticky;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 11px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--noveler-settings-radius);
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  box-shadow: var(--shadow-s);
+  backdrop-filter: blur(10px);
+}
+
+.noveler-settings-save-bar > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.noveler-settings-save-bar span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noveler-settings-save-bar button:disabled,
+.noveler-settings-save-bar button.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: saturate(0);
+}
+
+@media (max-width: 760px) {
+  .noveler-settings-grid,
+  .noveler-integration-grid,
+  .noveler-link-color-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .noveler-heading-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .noveler-margin-layout {
+    grid-template-areas:
+      "page page"
+      "top right"
+      "bottom left";
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .noveler-heading-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .noveler-settings-save-bar > div {
+    display: none;
+  }
 }
 
 .noveler-document {
@@ -1400,6 +1907,35 @@
   text-align: center;
   letter-spacing: 0.12em;
   color: var(--text-muted);
+}
+
+.noveler-editor .noveler-page-break {
+  display: none;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-editor .noveler-page-break {
+  display: block;
+  position: relative;
+  height: 0;
+  margin: 2em 0;
+  border-top: 1px dashed var(--background-modifier-border);
+  color: var(--text-faint);
+  pointer-events: none;
+  user-select: none;
+}
+
+.noveler-work-area[data-mode="focus"] .noveler-editor .noveler-page-break::after {
+  content: "Page break";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  padding: 0 8px;
+  background: var(--background-primary);
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+  line-height: 1;
+  transform: translate(-50%, -50%);
 }
 
 .noveler-editor hr {

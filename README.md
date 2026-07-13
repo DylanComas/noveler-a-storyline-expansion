@@ -21,8 +21,8 @@ If Noveler helps your writing workflow, you can support development through PayP
 3. Enable **Noveler - A StoryLine Expansion** from Obsidian's community plugin list.
 4. Click the **Open Noveler** ribbon icon or run **Open Noveler manuscript writer** from the command palette.
 5. Start writing in the Noveler editor, then save with `Ctrl/Cmd + S`.
-6. Optional: enable the StoryLine bridge in Noveler settings if you want StoryLine scenes and manuscript exports to route through Noveler.
-7. Optional: enable Antidote Connect in Noveler settings if you use Antidote Connectix.
+6. Install and enable StoryLine to route its scenes and manuscript exports through Noveler.
+7. Optional: install and enable Antidote Grammar Checker Integration if you use Antidote Connectix.
 
 <img width="1106" height="1013" alt="image" src="https://github.com/user-attachments/assets/2480bae4-3698-4afb-b801-7234b681cbec" />
 ---
@@ -49,6 +49,7 @@ Page mode supports:
 - Page zoom presets from compact views to large drafting views.
 - Header and footer text sizing.
 - Visual margin zones and ruler feedback.
+- Persistent manual page breaks with `Ctrl/Cmd + Enter`.
 
 This mode is especially useful when checking line length, page density, chapter headings, scene breaks, and the overall shape of a manuscript before exporting.
 
@@ -117,7 +118,6 @@ Automation options include:
 - Smart indenting that carries paragraph style classes across new paragraphs.
 - Removing double spaces on save.
 - Normalizing excessive line breaks on save.
-- Manual commands for removing double spaces, normalizing line breaks, and smartening punctuation.
 
 These tools help keep a manuscript clean without sending text outside Obsidian or requiring a separate formatting pass after every session.
 
@@ -134,8 +134,9 @@ Bridge settings include:
 - Replace StoryLine scene opens with Noveler.
 - Replace the StoryLine Manuscript tab with Noveler.
 - Add ePub export support to StoryLine's export options.
+- Choose the publication language written into ePub metadata.
 
-When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. The bridge only opens Markdown scene files under the configured StoryLine root with a valid StoryLine scene folder path.
+When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. Noveler reuses one dedicated editor tab rather than opening duplicate Noveler tabs. The bridge only opens Markdown scene files under the configured StoryLine root with a valid StoryLine scene folder path.
 
 Noveler can display visual-only links for StoryLine Characters, Locations, and Items directly in manuscript text. Each category has its own configurable color and bottom-bar visibility toggle. Links recognize entry names and supported nickname or alias fields, including custom Item fields named `NICKNAME / ALIAS`. Clicking a link opens the corresponding StoryLine entry without adding link markup to the Markdown scene or its exports.
 
@@ -159,6 +160,7 @@ Export options include:
 - **DOCX export** from StoryLine manuscripts with Noveler formatting.
 - **PDF export** from StoryLine manuscripts with Noveler formatting.
 - **ePub export** from StoryLine manuscripts when enabled.
+- Configurable ePub publication language metadata.
 - Optional book title heading.
 - Optional act headings.
 - Optional chapter headings.
@@ -193,7 +195,7 @@ Available commands include:
 - **Noveler Antidote: Open dictionary**
 - **Noveler Antidote: Open guide**
 
-Antidote Connect must be enabled in Noveler settings, and Antidote Connectix must be installed and available on the desktop system.
+The Antidote Grammar Checker Integration plugin and Antidote Connectix must be installed and available on the desktop system.
 
 ### Settings And Legacy Migration
 
@@ -217,13 +219,12 @@ After migration, future settings are saved inside the `noveler-a-storyline-expan
 - **Rich formatting toolbar**: Fast access to fonts, text styling, colors, paragraph styles, headings, alignment, spacing, lists, and manuscript elements.
 - **Scene-aware editing**: StoryLine Markdown scenes can open in Noveler while preserving frontmatter and scene-specific typography settings.
 - **StoryLine manuscript routing**: Scene opens and the StoryLine Manuscript tab can be replaced by Noveler.
-- **Colored StoryLine entity links**: Visual-only Character, Location, and Item links use configurable colors, aliases, independent visibility controls, and direct Codex navigation.
+- **Colored StoryLine entity links**: Visual-only Character, Location, and Item links use configurable colors, aliases, and direct Codex navigation.
 - **Selection-to-Codex workflow**: Search existing entries or create new Characters, Locations, and Items from selected manuscript text without leaving Noveler.
 - **Formatted DOCX/PDF/ePub export**: StoryLine manuscripts can export with Noveler layout and typography.
 - **Markdown export**: Standalone Noveler manuscripts can export back to Markdown.
 - **Antidote Connect integration**: Correct selections, correct full documents, open dictionaries, and open guides from Noveler.
 - **Smart writing cleanup**: Smart quotes, smart dashes, auto-capitalization, smart indenting, double-space cleanup, and line-break normalization.
-- **Drag-and-drop import**: Markdown, text, and HTML files can be opened or imported into Noveler.
 - **Desktop-focused**: Built for Obsidian desktop, with desktop-only integrations such as PDF export and Antidote Connect.
 
 ---
@@ -258,7 +259,7 @@ styles.css
 - Keep the plugin folder named `noveler-a-storyline-expansion`.
 - Do not enable older separate Noveler bridge plugins alongside this bundle.
 - If you use StoryLine, keep StoryLine installed and configure the StoryLine root folder in Noveler settings.
-- If you use Antidote, enable Antidote Connect in Noveler settings and make sure Connectix is installed.
+- If you use Antidote, install and enable Antidote Grammar Checker Integration and make sure Connectix is installed.
 
 ---
 

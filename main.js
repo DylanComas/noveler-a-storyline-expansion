@@ -9,6 +9,7 @@ const DEFAULT_MANUSCRIPT = "<p><br></p>";
 const SETTINGS_FILE_NAME = "Noveler Settings.json";
 const LEGACY_SETTINGS_FILE_PATH = SETTINGS_FILE_NAME;
 const SETTINGS_FILE_VERSION = 1;
+const ANNOTATION_LINK_MARKER = "#noveler-annotation-";
 
 const DEFAULT_SETTINGS = {
   manuscriptPath: "Noveler Manuscript.md",
@@ -54,12 +55,12 @@ const DEFAULT_SETTINGS = {
     hangingIndent: 0
   },
   headingStyles: {
-    h1: { fontFamily: "body", fontSize: 28, fontWeight: "700", italic: false, alignment: "left" },
-    h2: { fontFamily: "body", fontSize: 24, fontWeight: "700", italic: false, alignment: "left" },
-    h3: { fontFamily: "body", fontSize: 21, fontWeight: "600", italic: false, alignment: "left" },
-    h4: { fontFamily: "body", fontSize: 18, fontWeight: "600", italic: false, alignment: "left" },
-    h5: { fontFamily: "body", fontSize: 16, fontWeight: "600", italic: false, alignment: "left" },
-    h6: { fontFamily: "body", fontSize: 14, fontWeight: "600", italic: false, alignment: "left" }
+    h1: { fontFamily: "Georgia", fontSize: 28, fontWeight: "700", italic: false, alignment: "left" },
+    h2: { fontFamily: "Georgia", fontSize: 24, fontWeight: "700", italic: false, alignment: "left" },
+    h3: { fontFamily: "Georgia", fontSize: 21, fontWeight: "600", italic: false, alignment: "left" },
+    h4: { fontFamily: "Georgia", fontSize: 18, fontWeight: "600", italic: false, alignment: "left" },
+    h5: { fontFamily: "Georgia", fontSize: 16, fontWeight: "600", italic: false, alignment: "left" },
+    h6: { fontFamily: "Georgia", fontSize: 14, fontWeight: "600", italic: false, alignment: "left" }
   },
   toolbar: {
     textColorSwatches: ["", "", "", "", ""]
@@ -72,16 +73,15 @@ const DEFAULT_SETTINGS = {
     removeDoubleSpacesOnSave: true,
     normalizeLineBreaksOnSave: true
   },
-  fileOpen: {
-    allowDropOpen: true,
-    importFolder: "Noveler Imports"
-  },
   integrations: {
-    antidoteConnect: false,
+    antidoteConnect: true,
     antidoteKeepFocus: true
   },
+  export: {
+    epubLanguage: "en"
+  },
   storyLineBridge: {
-    enabled: false,
+    enabled: true,
     storyLineRoot: "StoryLine",
     replaceStoryLineSceneOpens: true,
     replaceManuscriptView: true,
@@ -174,20 +174,50 @@ const FALLBACK_FONT_FAMILIES = [
   "Verdana"
 ];
 
+const EPUB_LANGUAGE_OPTIONS = [
+  ["en", "English"],
+  ["fr", "French"],
+  ["de", "German"],
+  ["es", "Spanish"],
+  ["it", "Italian"],
+  ["pt", "Portuguese"],
+  ["nl", "Dutch"],
+  ["pl", "Polish"],
+  ["cs", "Czech"],
+  ["da", "Danish"],
+  ["fi", "Finnish"],
+  ["no", "Norwegian"],
+  ["sv", "Swedish"],
+  ["uk", "Ukrainian"],
+  ["ru", "Russian"],
+  ["ar", "Arabic"],
+  ["zh", "Chinese"],
+  ["ja", "Japanese"],
+  ["ko", "Korean"]
+];
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeEpubLanguage(value) {
+  const language = String(value || "").trim().replace(/_/g, "-").toLowerCase();
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(language) ? language : "en";
 }
 
 function mergeSettings(stored) {
   const result = clone(DEFAULT_SETTINGS);
   mergeInto(result, stored || {});
-  if (
-    stored
-    && stored.storyLineBridge
-    && stored.storyLineBridge.visualLinks === false
-    && !stored.storyLineBridge.visualLinkCategories
-  ) {
-    result.storyLineBridge.visualLinkCategories = { character: false, location: false, item: false };
+  result.storyLineBridge.enabled = true;
+  result.storyLineBridge.enableEpubExport = true;
+  result.integrations.antidoteConnect = true;
+  result.integrations.antidoteKeepFocus = true;
+  result.export.epubLanguage = normalizeEpubLanguage(result.export.epubLanguage);
+  for (let level = 1; level <= 6; level += 1) {
+    const heading = result.headingStyles[`h${level}`];
+    if (heading && (!heading.fontFamily || heading.fontFamily === "body")) {
+      heading.fontFamily = "Georgia";
+    }
   }
   if (result.layout.mode === "draft") {
     result.layout.mode = "focus";
@@ -385,6 +415,39 @@ function safeDecodeUriComponent(value) {
   } catch (error) {
     return value;
   }
+}
+
+function encodeAnnotationPayload(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeAnnotationPayload(value) {
+  try {
+    const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return payload && payload.v === 1 ? payload : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function parseAnnotationLink(linktext) {
+  const raw = String(linktext || "");
+  const markerIndex = raw.indexOf(ANNOTATION_LINK_MARKER);
+  if (markerIndex < 0) {
+    return null;
+  }
+  const scenePath = normalizeVaultPath(raw.slice(0, markerIndex));
+  const payload = decodeAnnotationPayload(raw.slice(markerIndex + ANNOTATION_LINK_MARKER.length));
+  return scenePath && payload ? { scenePath, payload } : null;
 }
 
 function getStoryLineBridgeApi() {
@@ -746,11 +809,18 @@ function getElementForNode(node) {
 class NovelerPlugin extends Plugin {
   async onload() {
     this.settingsWritePromise = Promise.resolve();
+    this.viewActivationPromise = Promise.resolve();
+    this.propertiesRefreshTimer = null;
     this.focusModeViews = new Set();
     this.focusSidebarState = null;
     await this.loadSettings();
 
     this.registerView(VIEW_TYPE, (leaf) => new NovelerView(leaf, this));
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.enforceSingleNovelerView()));
+    if (typeof this.app.workspace.onLayoutReady === "function") {
+      this.app.workspace.onLayoutReady(() => this.enforceSingleNovelerView());
+    }
+    this.installActiveFileBridge();
     this.registerNovelerApi();
 
     this.addRibbonIcon("book-open-text", "Open Noveler", () => {
@@ -811,6 +881,11 @@ class NovelerPlugin extends Plugin {
       name: "Noveler: Insert scene break",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "8" }],
       checkCallback: (checking) => this.withView(checking, (view) => view.insertSceneBreak(this.settings.sceneBreakGlyph))
+    });
+    this.addCommand({
+      id: "noveler-page-break",
+      name: "Noveler: Insert page break",
+      checkCallback: (checking) => this.withView(checking, (view) => view.insertPageBreak())
     });
     this.addCommand({
       id: "noveler-centered-ornament",
@@ -889,28 +964,16 @@ class NovelerPlugin extends Plugin {
     this.addViewCommand("noveler-toggle-smart-dashes", "Noveler: Toggle smart dashes", (view) => view.toggleAutomationFlag("smartDashes"));
     this.addViewCommand("noveler-toggle-auto-capitalization", "Noveler: Toggle auto-capitalization", (view) => view.toggleAutomationFlag("autoCapitalize"));
     this.addViewCommand("noveler-toggle-smart-indent", "Noveler: Toggle smart indenting", (view) => view.toggleAutomationFlag("smartIndent"));
-    this.addCommand({
-      id: "noveler-remove-double-spaces",
-      name: "Noveler: Remove double spaces",
-      checkCallback: (checking) => this.withView(checking, (view) => view.cleanupDocument({ doubleSpaces: true }))
-    });
-    this.addCommand({
-      id: "noveler-normalize-line-breaks",
-      name: "Noveler: Normalize line breaks",
-      checkCallback: (checking) => this.withView(checking, (view) => view.cleanupDocument({ lineBreaks: true }))
-    });
-    this.addCommand({
-      id: "noveler-smarten-punctuation",
-      name: "Noveler: Smarten punctuation",
-      checkCallback: (checking) => this.withView(checking, (view) => view.cleanupDocument({ punctuation: true }))
-    });
-
     this.settingTab = new NovelerSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);
     this.registerVaultTitleSync();
   }
 
   onunload() {
+    if (this.propertiesRefreshTimer) {
+      window.clearTimeout(this.propertiesRefreshTimer);
+      this.propertiesRefreshTimer = null;
+    }
     const focusView = this.focusModeViews && this.focusModeViews.values().next().value;
     if (focusView) {
       this.restoreFocusSidebars(focusView);
@@ -928,6 +991,8 @@ class NovelerPlugin extends Plugin {
       plugin: this,
       open: () => this.activateView(),
       openScene: (path, options = {}) => this.openScene(path, options),
+      isAnnotationLink: (linktext) => !!parseAnnotationLink(linktext),
+      openAnnotationLink: (linktext) => this.openAnnotationLink(linktext),
       isStoryLineBridgeEnabled: () => this.isStoryLineBridgeEnabled(),
       isStoryLineScenePath: (path) => this.isStoryLineScenePath(path),
       isAntidoteConnectEnabled: () => this.isAntidoteConnectEnabled(),
@@ -940,10 +1005,32 @@ class NovelerPlugin extends Plugin {
         return view && typeof view.createAntidoteDocument === "function" ? view.createAntidoteDocument(options) : null;
       },
       getCurrentScenePath: () => {
-        const view = this.getActiveView();
+        const view = this.getLoadedView();
         return view ? view.currentDocumentPath : "";
       }
     };
+  }
+
+  installActiveFileBridge() {
+    const workspace = this.app.workspace;
+    if (!workspace || typeof workspace.getActiveFile !== "function") {
+      return;
+    }
+    const originalGetActiveFile = workspace.getActiveFile;
+    const plugin = this;
+    const bridgedGetActiveFile = function(...args) {
+      const loadedSceneFile = plugin.getLoadedSceneFile();
+      if (loadedSceneFile) {
+        return loadedSceneFile;
+      }
+      return originalGetActiveFile.apply(this, args);
+    };
+    workspace.getActiveFile = bridgedGetActiveFile;
+    this.register(() => {
+      if (workspace.getActiveFile === bridgedGetActiveFile) {
+        workspace.getActiveFile = originalGetActiveFile;
+      }
+    });
   }
 
   registerVaultTitleSync() {
@@ -978,6 +1065,7 @@ class NovelerPlugin extends Plugin {
         continue;
       }
       leaf.view.currentDocumentPath = newVaultPath;
+      leaf.view.setActiveDocumentFile(file);
       if (!this.isStoryLineBridgeEnabled()) {
         this.settings.manuscriptPath = newVaultPath;
         await this.saveSettings();
@@ -1062,7 +1150,71 @@ class NovelerPlugin extends Plugin {
     return null;
   }
 
-  async activateView(state = {}) {
+  getLoadedView() {
+    const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    return leaf && leaf.view instanceof NovelerView ? leaf.view : null;
+  }
+
+  getLoadedSceneFile() {
+    const view = this.getLoadedView();
+    if (!view) {
+      return null;
+    }
+    if (view.file instanceof TFile) {
+      return view.file;
+    }
+    const path = normalizeVaultPath(view.currentDocumentPath);
+    const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
+    return file instanceof TFile ? file : null;
+  }
+
+  refreshLoadedSceneProperties() {
+    if (this.propertiesRefreshTimer) {
+      window.clearTimeout(this.propertiesRefreshTimer);
+    }
+    this.propertiesRefreshTimer = window.setTimeout(() => {
+      this.propertiesRefreshTimer = null;
+      const activeLeaf = this.app.workspace.activeLeaf;
+      if (activeLeaf) {
+        this.app.workspace.trigger("active-leaf-change", activeLeaf);
+      }
+    }, 0);
+  }
+
+  enforceSingleNovelerView(preferredLeaf) {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
+    if (!leaves.length) {
+      return null;
+    }
+    if (this.enforcingSingleNovelerView) {
+      return leaves.includes(preferredLeaf) ? preferredLeaf : leaves[0];
+    }
+    const activeLeaf = this.app.workspace.activeLeaf;
+    const keepLeaf = leaves.includes(preferredLeaf)
+      ? preferredLeaf
+      : leaves.includes(activeLeaf)
+        ? activeLeaf
+        : leaves[0];
+    this.enforcingSingleNovelerView = true;
+    try {
+      for (const leaf of leaves) {
+        if (leaf !== keepLeaf && typeof leaf.detach === "function") {
+          leaf.detach();
+        }
+      }
+    } finally {
+      this.enforcingSingleNovelerView = false;
+    }
+    return keepLeaf;
+  }
+
+  activateView(state = {}, options = {}) {
+    const activate = () => this.activateViewInternal(state, options);
+    this.viewActivationPromise = this.viewActivationPromise.then(activate, activate);
+    return this.viewActivationPromise;
+  }
+
+  async activateViewInternal(state = {}, options = {}) {
     if (this.isStoryLineBridgeEnabled()) {
       const bridgePath = normalizeVaultPath(state.path || state.filePath || this.getStoryLineActiveScenePath());
       if (bridgePath && !this.isStoryLineScenePath(bridgePath)) {
@@ -1075,13 +1227,16 @@ class NovelerPlugin extends Plugin {
       });
     }
 
-    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    let leaf = this.enforceSingleNovelerView();
     if (!leaf) {
-      leaf = this.app.workspace.getLeaf(true);
+      leaf = options.targetLeaf && options.replaceLeaf
+        ? options.targetLeaf
+        : this.app.workspace.getLeaf(true);
       await leaf.setViewState({ type: VIEW_TYPE, active: true, state });
     } else if (state && Object.keys(state).length) {
       await leaf.setViewState({ type: VIEW_TYPE, active: true, state });
     }
+    leaf = this.enforceSingleNovelerView(leaf) || leaf;
     this.app.workspace.revealLeaf(leaf);
 
     if (state.path && leaf.view instanceof NovelerView) {
@@ -1103,7 +1258,41 @@ class NovelerPlugin extends Plugin {
     await this.activateView({
       path: vaultPath,
       source: options.source || "external"
-    });
+    }, options);
+  }
+
+  async openAnnotationLink(linktext) {
+    const annotation = parseAnnotationLink(linktext);
+    if (!annotation) {
+      return false;
+    }
+    const sceneFile = this.app.vault.getAbstractFileByPath(annotation.scenePath);
+    if (!(sceneFile instanceof TFile)) {
+      new Notice(`Annotated scene not found: ${annotation.scenePath}`);
+      return true;
+    }
+
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE).find((candidate) => (
+      candidate.view instanceof NovelerView
+      && normalizeVaultPath(candidate.view.currentDocumentPath) === annotation.scenePath
+    ));
+    if (!leaf) {
+      await this.openScene(annotation.scenePath, { source: "annotation" });
+      leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE).find((candidate) => (
+        candidate.view instanceof NovelerView
+        && normalizeVaultPath(candidate.view.currentDocumentPath) === annotation.scenePath
+      ));
+    }
+    if (!leaf || !(leaf.view instanceof NovelerView)) {
+      new Notice("Could not open the annotated scene in Noveler.");
+      return true;
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    const highlighted = leaf.view.revealAnnotation(annotation.payload);
+    if (!highlighted) {
+      new Notice("The annotated passage could not be found in the current scene text.");
+    }
+    return true;
   }
 
   async loadSettings() {
@@ -1124,9 +1313,15 @@ class NovelerPlugin extends Plugin {
   queueSettingsPersistence(settingsData, writeSettingsFile) {
     const snapshot = clone(settingsData);
     const persist = async () => {
-      await this.saveData(snapshot);
       if (writeSettingsFile) {
         await this.saveSettingsFile(snapshot);
+        try {
+          await this.saveData(snapshot);
+        } catch (error) {
+          console.warn("Noveler saved its settings JSON but could not update Obsidian's plugin data cache.", error);
+        }
+      } else {
+        await this.saveData(snapshot);
       }
     };
     this.settingsWritePromise = this.settingsWritePromise.then(persist, persist);
@@ -1175,7 +1370,11 @@ class NovelerPlugin extends Plugin {
     mergeInto(merged, fileSettings);
     this.settings = mergeSettings(merged);
     if (this.loadedSettingsFilePath && this.loadedSettingsFilePath !== this.getSettingsFilePath()) {
-      await this.saveSettingsFile(this.settings);
+      try {
+        await this.saveSettingsFile(this.settings);
+      } catch (error) {
+        console.warn(`Noveler could not migrate ${SETTINGS_FILE_NAME} into the plugin folder.`, error);
+      }
     }
     return true;
   }
@@ -1222,15 +1421,20 @@ class NovelerPlugin extends Plugin {
   }
 
   async saveSettingsFile(settingsData) {
+    const settingsPath = this.getSettingsFilePath();
+    const payload = {
+      version: SETTINGS_FILE_VERSION,
+      savedAt: new Date().toISOString(),
+      settings: mergeSettings(settingsData || this.getSerializableSettings())
+    };
     try {
-      const settingsPath = this.getSettingsFilePath();
-      const payload = {
-        version: SETTINGS_FILE_VERSION,
-        savedAt: new Date().toISOString(),
-        settings: mergeSettings(settingsData || this.getSerializableSettings())
-      };
       await this.ensureAdapterFolder(settingsPath);
       await this.app.vault.adapter.write(settingsPath, `${JSON.stringify(payload, null, 2)}\n`);
+    } catch (error) {
+      console.error(`Noveler could not write ${SETTINGS_FILE_NAME}.`, error);
+      throw error;
+    }
+    try {
       if (
         settingsPath !== LEGACY_SETTINGS_FILE_PATH
         && typeof this.app.vault.adapter.remove === "function"
@@ -1239,8 +1443,9 @@ class NovelerPlugin extends Plugin {
         await this.app.vault.adapter.remove(LEGACY_SETTINGS_FILE_PATH);
       }
     } catch (error) {
-      console.warn(`Noveler could not write ${SETTINGS_FILE_NAME}.`, error);
+      console.warn(`Noveler could not remove the legacy ${SETTINGS_FILE_NAME}.`, error);
     }
+    return settingsPath;
   }
 
   async saveSceneSettings(path, sceneSettings, defaults) {
@@ -1315,6 +1520,7 @@ class NovelerView extends ItemView {
     this.lastKnownDiskContent = null;
     this.externalConflict = false;
     this.currentDocumentPath = "";
+    this.file = null;
     this.currentMarkdownFrontmatter = "";
     this.currentDocumentFormat = "html";
     this.currentDocumentTitle = "";
@@ -1344,6 +1550,7 @@ class NovelerView extends ItemView {
     this.storyLineContextSubmenuEl = null;
     this.storyLineContextAnchorEl = null;
     this.storyLineContextCloseTimer = null;
+    this.annotationHighlightRange = null;
   }
 
   getViewType() {
@@ -1384,7 +1591,7 @@ class NovelerView extends ItemView {
       await super.setState(state, result);
     }
 
-    const path = normalizeVaultPath((state && (state.path || state.filePath)) || "");
+    const path = normalizeVaultPath((state && (state.path || state.filePath || (typeof state.file === "string" ? state.file : ""))) || "");
     if (path && this.editorEl) {
       await this.openScenePath(path, { source: state.source, silent: true });
     }
@@ -1392,13 +1599,28 @@ class NovelerView extends ItemView {
 
   getState() {
     if (this.plugin.isStoryLineBridgeEnabled()) {
+      const path = this.currentDocumentPath || this.plugin.getStoryLineActiveScenePath();
       return {
-        path: this.currentDocumentPath || this.plugin.getStoryLineActiveScenePath()
+        path,
+        file: path
       };
     }
+    const path = this.currentDocumentPath || this.plugin.settings.manuscriptPath;
     return {
-      path: this.currentDocumentPath || this.plugin.settings.manuscriptPath
+      path,
+      file: path
     };
+  }
+
+  getFile() {
+    return this.file instanceof TFile ? this.file : null;
+  }
+
+  setActiveDocumentFile(file, notify = true) {
+    this.file = file instanceof TFile ? file : null;
+    if (notify) {
+      this.plugin.refreshLoadedSceneProperties();
+    }
   }
 
   getStatePath() {
@@ -1444,6 +1666,7 @@ class NovelerView extends ItemView {
       this.storyLineEntityRefreshTimer = null;
     }
     this.closeStoryLineContextSubmenu();
+    this.clearAnnotationHighlight();
     this.clearStoryLineVisualLinks();
     this.leaveFocusMode();
     this.closeColorPopover();
@@ -1485,6 +1708,7 @@ class NovelerView extends ItemView {
     this.floatingToolbarEl = null;
 
     this.registerDomEvent(this.editorEl, "input", () => {
+      this.clearAnnotationHighlight();
       this.captureSelection();
       this.schedulePagination();
       this.scheduleStoryLineVisualLinks();
@@ -1495,7 +1719,11 @@ class NovelerView extends ItemView {
     this.registerDomEvent(this.editorEl, "beforeinput", (event) => this.onBeforeInput(event));
     this.registerDomEvent(this.editorEl, "paste", (event) => this.onEditorPaste(event));
     this.registerDomEvent(this.editorEl, "keydown", (event) => this.onKeydown(event));
-    this.registerDomEvent(this.editorEl, "pointerdown", (event) => this.captureCaretFromPoint(event));
+    this.registerDomEvent(window, "keydown", (event) => this.onCapturedKeydown(event), true);
+    this.registerDomEvent(this.editorEl, "pointerdown", (event) => {
+      this.clearAnnotationHighlight();
+      this.captureCaretFromPoint(event);
+    });
     this.registerDomEvent(this.editorEl, "click", (event) => this.onEditorClick(event));
     this.registerDomEvent(this.editorEl, "pointermove", (event) => this.updateStoryLineLinkHover(event));
     this.registerDomEvent(this.editorEl, "pointerleave", () => this.clearStoryLineLinkHover());
@@ -1503,10 +1731,6 @@ class NovelerView extends ItemView {
     this.registerDomEvent(this.editorEl, "keyup", () => this.captureSelection());
     this.registerDomEvent(this.editorEl, "focusin", () => this.scheduleStoryLineVisualLinks());
     this.registerDomEvent(this.editorEl, "contextmenu", (event) => this.openContextMenu(event));
-    this.registerDomEvent(this.workAreaEl, "dragenter", (event) => this.onEditorDragEnter(event));
-    this.registerDomEvent(this.workAreaEl, "dragover", (event) => this.onEditorDragOver(event));
-    this.registerDomEvent(this.workAreaEl, "dragleave", (event) => this.onEditorDragLeave(event));
-    this.registerDomEvent(this.workAreaEl, "drop", (event) => this.onEditorDrop(event));
     this.registerDomEvent(this.topRulerEl, "contextmenu", (event) => this.openRulerContextMenu(event));
     this.registerDomEvent(this.leftRulerEl, "contextmenu", (event) => this.openRulerContextMenu(event));
     this.registerDomEvent(document, "selectionchange", () => this.captureSelection());
@@ -1581,6 +1805,7 @@ class NovelerView extends ItemView {
     }, true));
     this.createIconButton(paragraphGroup, "list", "Bulleted list", () => this.format("insertUnorderedList"));
     this.createIconButton(paragraphGroup, "list-ordered", "Numbered list", () => this.format("insertOrderedList"));
+
     this.scheduleFitTopToolbar();
   }
 
@@ -1718,7 +1943,7 @@ class NovelerView extends ItemView {
         this.currentDocumentPath,
         getNovelerSceneSettings(this.plugin.settings),
         this.defaultSceneSettings
-      );
+      ).catch((error) => console.warn("Noveler could not persist scene typography settings.", error));
     }
   }
 
@@ -2386,17 +2611,19 @@ class NovelerView extends ItemView {
         this.currentDocumentPath,
         getNovelerSceneSettings(this.plugin.settings),
         this.defaultSceneSettings
-      );
+      ).catch((error) => console.warn("Noveler could not persist scene typography settings.", error));
       this.scheduleSave();
       return;
     }
     this.plugin.globalTypography = clone(this.plugin.settings.typography);
     if (options.silent) {
       const data = this.plugin.getSerializableSettings();
-      this.plugin.queueSettingsPersistence(data, true);
+      this.plugin.queueSettingsPersistence(data, true).catch((error) => {
+        console.warn("Noveler could not persist toolbar settings.", error);
+      });
       return;
     }
-    this.plugin.saveSettings();
+    this.plugin.saveSettings().catch((error) => console.warn("Noveler could not persist toolbar settings.", error));
   }
 
   persistGlobalLayoutSetting(key) {
@@ -2409,7 +2636,7 @@ class NovelerView extends ItemView {
         this.plugin.settingTab.draftSettings.layout[layoutKey] = this.plugin.settings.layout[layoutKey];
       }
     }
-    this.plugin.saveSettings();
+    this.plugin.saveSettings().catch((error) => console.warn("Noveler could not persist layout settings.", error));
   }
 
   persistFocusSetting(key) {
@@ -2419,7 +2646,7 @@ class NovelerView extends ItemView {
       }
       this.plugin.settingTab.draftSettings.focus[key] = this.plugin.settings.focus[key];
     }
-    this.plugin.saveSettings();
+    this.plugin.saveSettings().catch((error) => console.warn("Noveler could not persist Focus mode settings.", error));
   }
 
   async loadDocument(pathOverride) {
@@ -2469,9 +2696,11 @@ class NovelerView extends ItemView {
     this.currentMarkdownFrontmatter = sceneContent.frontmatter;
     this.currentDocumentFormat = markdownScene ? "markdown" : "html";
     this.setDocumentTitle(title);
+    this.clearAnnotationHighlight();
     this.editorEl.setAttribute("contenteditable", "true");
     this.editorEl.innerHTML = this.contentToEditorHtml(file.name, sceneContent.body, title);
     this.currentDocumentPath = path;
+    this.setActiveDocumentFile(file);
     this.applyInferredTypographyFromContent(sceneSettings);
     this.applySettings();
     this.refreshEditorControls();
@@ -2562,6 +2791,7 @@ class NovelerView extends ItemView {
 
   showBridgeEmptyState() {
     this.currentDocumentPath = "";
+    this.setActiveDocumentFile(null);
     this.currentMarkdownFrontmatter = "";
     this.currentDocumentFormat = "markdown";
     this.lastKnownDiskContent = null;
@@ -2586,6 +2816,8 @@ class NovelerView extends ItemView {
     }
 
     if (vaultPath === this.currentDocumentPath && this.editorEl && this.prepareHtmlForSave() === this.lastSavedHtml) {
+      const currentFile = this.plugin.app.vault.getAbstractFileByPath(vaultPath);
+      this.setActiveDocumentFile(currentFile instanceof TFile ? currentFile : null);
       this.restoreSceneTypographySettings();
       this.applySettings();
       this.refreshEditorControls();
@@ -2628,159 +2860,6 @@ class NovelerView extends ItemView {
         await this.plugin.app.vault.createFolder(current);
       }
     }
-  }
-
-  async openVaultFile(path) {
-    const vaultPath = normalizeVaultPath(path);
-    if (!vaultPath || !this.isSupportedDroppedFileName(vaultPath)) {
-      new Notice("Noveler can open Markdown, text, and HTML files.");
-      return;
-    }
-    if (this.plugin.isStoryLineBridgeEnabled()) {
-      if (!this.plugin.isStoryLineScenePath(vaultPath)) {
-        this.plugin.notifyBridgePathRejected(vaultPath);
-        return;
-      }
-      await this.openScenePath(vaultPath, { source: "storyline" });
-      return;
-    }
-
-    const file = this.plugin.app.vault.getAbstractFileByPath(vaultPath);
-    if (!(file instanceof TFile)) {
-      new Notice(`Noveler cannot open ${vaultPath}.`);
-      return;
-    }
-
-    if (!(await this.saveBeforeDocumentChange())) {
-      return;
-    }
-    const content = await this.plugin.app.vault.read(file);
-    this.lastKnownDiskContent = content;
-    this.externalConflict = false;
-    const isMarkdown = /\.m(?:d|arkdown)$/i.test(file.name);
-
-    if (isMarkdown) {
-      this.plugin.settings.manuscriptPath = vaultPath;
-      await this.plugin.saveSettings();
-      const sceneContent = splitMarkdownFrontmatter(content);
-      const storedSceneSettings = getStoredSceneSettings(this.plugin.settings, vaultPath);
-      const frontmatterSceneSettings = getNovelerFrontmatterSettings(sceneContent.frontmatter);
-      const sceneSettings = hasSceneSettings(frontmatterSceneSettings) ? frontmatterSceneSettings : storedSceneSettings;
-      mergeSceneSettingsIntoPluginSettings(this.plugin.settings, sceneSettings, {
-        typography: this.plugin.globalTypography || DEFAULT_SETTINGS.typography
-      });
-      const title = this.deriveDocumentTitle(file, content);
-      this.setDocumentTitle(title);
-      this.currentMarkdownFrontmatter = sceneContent.frontmatter;
-      this.currentDocumentFormat = "markdown";
-      this.editorEl.innerHTML = this.contentToEditorHtml(file.name, sceneContent.body, title);
-      this.currentDocumentPath = vaultPath;
-      this.applyInferredTypographyFromContent(sceneSettings);
-      this.applySettings();
-      this.refreshEditorControls();
-      this.paginateEditor();
-      this.lastSavedHtml = this.prepareHtmlForSave();
-      this.hasPendingMetadataSave = false;
-      this.updateWordCount();
-      this.updateStatus(`Opened ${vaultPath}`);
-      new Notice(`Noveler opened ${vaultPath}.`);
-      return;
-    }
-
-    await this.importDroppedContent(file.name, content);
-  }
-
-  async openDroppedBrowserFile(file) {
-    if (!file || !this.isSupportedDroppedFileName(file.name)) {
-      new Notice("Noveler can open Markdown, text, and HTML files.");
-      return;
-    }
-    if (this.plugin.isStoryLineBridgeEnabled()) {
-      new Notice("Bridge mode only opens existing StoryLine scene files from the vault.");
-      return;
-    }
-
-    if (!(await this.saveBeforeDocumentChange())) {
-      return;
-    }
-    const content = await this.readBrowserFile(file);
-    await this.importDroppedContent(file.name, content);
-  }
-
-  async importDroppedContent(fileName, content) {
-    if (this.plugin.isStoryLineBridgeEnabled()) {
-      new Notice("Bridge mode only writes existing StoryLine scene files.");
-      return;
-    }
-
-    const title = titleFromFileName(fileName);
-    const html = this.contentToEditorHtml(fileName, content, title);
-    const importPath = await this.getUniqueImportPath(fileName);
-
-    await this.ensureParentFolder(importPath);
-    const existing = this.plugin.app.vault.getAbstractFileByPath(importPath);
-    if (existing instanceof TFile) {
-      await this.plugin.app.vault.modify(existing, html);
-    } else {
-      await this.plugin.app.vault.create(importPath, html);
-    }
-
-    this.plugin.settings.manuscriptPath = importPath;
-    await this.plugin.saveSettings();
-    this.setDocumentTitle(title);
-    this.editorEl.innerHTML = html;
-    this.currentMarkdownFrontmatter = "";
-    this.currentDocumentFormat = "markdown";
-    this.currentDocumentPath = importPath;
-    this.lastKnownDiskContent = html;
-    this.externalConflict = false;
-    this.applyInferredTypographyFromContent(null);
-    this.applySettings();
-    this.refreshEditorControls();
-    this.paginateEditor();
-    this.lastSavedHtml = this.prepareHtmlForSave();
-    this.hasPendingMetadataSave = false;
-    this.updateWordCount();
-    this.updateStatus(`Imported ${importPath}`);
-    new Notice(`Noveler imported ${importPath}.`);
-  }
-
-  async getUniqueImportPath(fileName) {
-    const folder = normalizeVaultPath(this.plugin.settings.fileOpen.importFolder) || DEFAULT_SETTINGS.fileOpen.importFolder;
-    const baseName = this.sanitizeFileName(fileName).replace(/\.[^.]+$/, "") || "Dropped manuscript";
-    let candidate = `${folder}/${baseName}.md`;
-    let index = 2;
-
-    while (this.plugin.app.vault.getAbstractFileByPath(candidate)) {
-      candidate = `${folder}/${baseName} ${index}.md`;
-      index += 1;
-    }
-
-    return candidate;
-  }
-
-  sanitizeFileName(fileName) {
-    return String(fileName || "Dropped manuscript")
-      .replace(/[\\/:*?"<>|]/g, "-")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  isSupportedDroppedFileName(fileName) {
-    return /\.(md|markdown|txt|html|htm)$/i.test(String(fileName || ""));
-  }
-
-  async readBrowserFile(file) {
-    if (typeof file.text === "function") {
-      return file.text();
-    }
-
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error || new Error("Unable to read dropped file"));
-      reader.readAsText(file);
-    });
   }
 
   contentToEditorHtml(fileName, content, fallbackTitle) {
@@ -2919,7 +2998,7 @@ class NovelerView extends ItemView {
       return token;
     };
     let text = String(value || "");
-    text = text.replace(/\\([\\`*_[\]{}()#+\-.!~])/g, (_match, char) => stash(escapeHtml(char)));
+    text = text.replace(/\\([\\`*_[\]{}()#+\-.!~<>])/g, (_match, char) => stash(escapeHtml(char)));
     text = text.replace(/`([^`]+)`/g, (_match, code) => stash(`<code>${escapeHtml(code)}</code>`));
     text = text.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+["']([^"']*)["'])?\)/g, (_match, alt, src, title) => {
       if (!isSafeEditorUrl(src, true)) return escapeHtml(_match);
@@ -3192,6 +3271,11 @@ class NovelerView extends ItemView {
     this.editorEl.empty();
     let page = this.createEditorPage();
     for (const node of nodes) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.hasClass("noveler-page-break")) {
+        page = this.createEditorPage();
+        page.appendChild(node);
+        continue;
+      }
       let pending = node;
       while (pending) {
         page.appendChild(pending);
@@ -3871,7 +3955,6 @@ class NovelerView extends ItemView {
     this.shellEl.dataset.focusDim = settings.focus.dimUnfocusedLines ? "true" : "false";
     this.shellEl.dataset.focusScope = settings.focus.highlightScope === "paragraph" ? "paragraph" : "line";
     this.workAreaEl.dataset.mode = mode;
-    this.workAreaEl.dataset.dropEnabled = settings.fileOpen.allowDropOpen ? "true" : "false";
     const focusZoom = mode === "focus" ? this.getPageZoom() : DEFAULT_SETTINGS.focus.defaultZoom / 100;
     this.shellEl.style.setProperty("--noveler-focus-zoom", String(focusZoom));
     this.shellEl.style.setProperty("--noveler-focus-content-width", "80%");
@@ -4176,7 +4259,7 @@ class NovelerView extends ItemView {
 
   toggleAutomationFlag(key) {
     this.plugin.settings.automation[key] = !this.plugin.settings.automation[key];
-    this.plugin.saveSettings();
+    this.plugin.saveSettings().catch((error) => console.warn("Noveler could not persist editing settings.", error));
     this.buildTopToolbar();
   }
 
@@ -4273,6 +4356,58 @@ class NovelerView extends ItemView {
     this.updateWordCount();
   }
 
+  insertPageBreak() {
+    this.focusForCommand();
+    const range = this.getSelectionRange();
+    if (!range) {
+      return;
+    }
+
+    range.deleteContents();
+    const marker = document.createElement("div");
+    marker.className = "noveler-page-break";
+    marker.setAttribute("contenteditable", "false");
+    range.insertNode(marker);
+
+    const page = marker.closest(".noveler-page");
+    const contentRoot = page || this.editorEl;
+    while (marker.parentNode && marker.parentNode !== contentRoot) {
+      const container = marker.parentNode;
+      const parent = container.parentNode;
+      if (!parent) {
+        break;
+      }
+      const trailingContainer = container.cloneNode(false);
+      while (marker.nextSibling) {
+        trailingContainer.appendChild(marker.nextSibling);
+      }
+      parent.insertBefore(marker, container.nextSibling);
+      if (trailingContainer.childNodes.length) {
+        parent.insertBefore(trailingContainer, marker.nextSibling);
+      }
+    }
+
+    let followingBlock = marker.nextSibling;
+    if (!followingBlock || followingBlock.nodeType !== Node.ELEMENT_NODE) {
+      followingBlock = document.createElement("p");
+      followingBlock.appendChild(document.createElement("br"));
+      marker.parentNode.insertBefore(followingBlock, marker.nextSibling);
+    }
+
+    const caret = document.createRange();
+    caret.selectNodeContents(followingBlock);
+    caret.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(caret);
+    this.captureSelection();
+    this.revealCaretAfterPagination = true;
+    this.schedulePagination();
+    this.scheduleSave();
+    this.updateWordCount();
+    this.updateStatus("Unsaved changes");
+  }
+
   insertHorizontalRule() {
     this.focusForCommand();
     document.execCommand("insertHTML", false, "<hr><p><br></p>");
@@ -4284,252 +4419,6 @@ class NovelerView extends ItemView {
     document.execCommand("insertHTML", false, '<ul class="noveler-checklist"><li data-checked="false"><span class="noveler-checkbox" contenteditable="false">☐</span> </li></ul><p><br></p>');
     this.scheduleSave();
     this.updateWordCount();
-  }
-
-  onEditorDragEnter(event) {
-    if (!this.plugin.settings.fileOpen.allowDropOpen) {
-      return;
-    }
-    event.preventDefault();
-    this.workAreaEl.addClass("is-dragging-file");
-  }
-
-  onEditorDragOver(event) {
-    if (!this.plugin.settings.fileOpen.allowDropOpen) {
-      return;
-    }
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = "copy";
-    }
-    this.workAreaEl.addClass("is-dragging-file");
-  }
-
-  onEditorDragLeave(event) {
-    if (event.relatedTarget instanceof Node && this.workAreaEl.contains(event.relatedTarget)) {
-      return;
-    }
-    this.workAreaEl.removeClass("is-dragging-file");
-  }
-
-  async onEditorDrop(event) {
-    if (!this.plugin.settings.fileOpen.allowDropOpen) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.workAreaEl.removeClass("is-dragging-file");
-
-    const files = Array.from(event.dataTransfer ? event.dataTransfer.files || [] : []);
-    if (files.length) {
-      const vaultPath = this.getVaultPathFromDroppedFile(files[0]);
-      if (vaultPath) {
-        await this.openVaultFile(vaultPath);
-        return;
-      }
-      await this.openDroppedBrowserFile(files[0]);
-      return;
-    }
-
-    const vaultPath = this.extractDroppedVaultPath(event.dataTransfer);
-    if (vaultPath) {
-      await this.openVaultFile(vaultPath);
-      return;
-    }
-
-    new Notice("Drop a Markdown, text, or HTML file to open it in Noveler.");
-  }
-
-  extractDroppedVaultPath(dataTransfer) {
-    if (!dataTransfer) {
-      return "";
-    }
-
-    const candidates = this.getDroppedPathCandidates(dataTransfer);
-
-    const basePath = this.getVaultBasePath();
-    for (const rawCandidate of candidates) {
-      const candidate = this.cleanDroppedPath(rawCandidate);
-      if (!candidate || candidate.startsWith("#")) {
-        continue;
-      }
-
-      const vaultRelative = this.absoluteToVaultPath(candidate, basePath) || normalizeVaultPath(candidate);
-      if (this.plugin.app.vault.getAbstractFileByPath(vaultRelative) instanceof TFile) {
-        return vaultRelative;
-      }
-    }
-
-    return "";
-  }
-
-  getDroppedPathCandidates(dataTransfer) {
-    const candidates = [];
-    const preferredTypes = [
-      "text/scene-path",
-      "text/path",
-      "application/x-obsidian-file",
-      "application/x-obsidian-drag-data",
-      "text/plain",
-      "text/uri-list",
-      "text/html"
-    ];
-    const allTypes = Array.from(dataTransfer.types || []);
-    const types = Array.from(new Set([...preferredTypes, ...allTypes]));
-
-    for (const type of types) {
-      try {
-        const value = dataTransfer.getData(type);
-        if (value) {
-          candidates.push(...this.extractCandidateStrings(value));
-        }
-      } catch (error) {
-        // Some custom drag payloads throw when read outside their owner.
-      }
-    }
-
-    return Array.from(new Set(candidates.map((candidate) => String(candidate || "").trim()).filter(Boolean)));
-  }
-
-  extractCandidateStrings(value) {
-    const text = String(value || "");
-    const candidates = [];
-    const add = (candidate) => {
-      const cleaned = String(candidate || "").trim();
-      if (cleaned) {
-        candidates.push(cleaned);
-      }
-    };
-
-    for (const line of text.split(/\r?\n/)) {
-      add(line);
-    }
-
-    try {
-      this.collectJsonStrings(JSON.parse(text), candidates);
-    } catch (error) {
-      // Non-JSON drag payloads are expected.
-    }
-
-    const attrPattern = /\b(?:data-path|data-file-path|data-scene-path|data-href|href)=["']([^"']+)["']/gi;
-    let attrMatch;
-    while ((attrMatch = attrPattern.exec(text)) !== null) {
-      add(attrMatch[1]);
-    }
-
-    const markdownLinkPattern = /\]\(([^)]+\.m(?:d|arkdown)(?:#[^)]+)?)\)/gi;
-    let markdownMatch;
-    while ((markdownMatch = markdownLinkPattern.exec(text)) !== null) {
-      add(markdownMatch[1]);
-    }
-
-    const wikiLinkPattern = /\[\[([^\]]+\.m(?:d|arkdown)(?:#[^\]]+)?)\]\]/gi;
-    let wikiMatch;
-    while ((wikiMatch = wikiLinkPattern.exec(text)) !== null) {
-      add(wikiMatch[1]);
-    }
-
-    const pathPattern = /(?:file:\/\/\/|obsidian:\/\/open\?[^\s"'<>]+|(?:[A-Za-z]:)?[^"'<>|\r\n]+?\.m(?:d|arkdown))(?:#[^\s"'<>]*)?/gi;
-    let pathMatch;
-    while ((pathMatch = pathPattern.exec(text)) !== null) {
-      add(pathMatch[0]);
-    }
-
-    return candidates;
-  }
-
-  collectJsonStrings(value, output) {
-    if (typeof value === "string") {
-      output.push(value);
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        this.collectJsonStrings(item, output);
-      }
-      return;
-    }
-    if (!value || typeof value !== "object") {
-      return;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (/path|file|href|link|scene/i.test(key)) {
-        this.collectJsonStrings(child, output);
-      } else if (child && typeof child === "object") {
-        this.collectJsonStrings(child, output);
-      }
-    }
-  }
-
-  getVaultBasePath() {
-    const adapter = this.plugin.app.vault.adapter;
-    if (adapter && typeof adapter.getBasePath === "function") {
-      return normalizeVaultPath(adapter.getBasePath());
-    }
-    return "";
-  }
-
-  getVaultPathFromDroppedFile(file) {
-    if (!file) {
-      return "";
-    }
-
-    const basePath = this.getVaultBasePath();
-    const candidates = [
-      file.path,
-      file.webkitRelativePath,
-      file.name
-    ];
-
-    for (const rawCandidate of candidates) {
-      const candidate = this.cleanDroppedPath(rawCandidate);
-      const vaultRelative = this.absoluteToVaultPath(candidate, basePath) || normalizeVaultPath(candidate);
-      if (vaultRelative && this.plugin.app.vault.getAbstractFileByPath(vaultRelative) instanceof TFile) {
-        return vaultRelative;
-      }
-    }
-    return "";
-  }
-
-  cleanDroppedPath(path) {
-    let cleaned = String(path || "").trim();
-    cleaned = cleaned.replace(/^<|>$/g, "");
-    const wiki = cleaned.match(/^\[\[([^\]]+)\]\]$/);
-    if (wiki) {
-      cleaned = wiki[1];
-    }
-
-    if (cleaned.startsWith("obsidian://")) {
-      try {
-        const url = new URL(cleaned);
-        cleaned = url.searchParams.get("file") || url.searchParams.get("path") || cleaned;
-      } catch (error) {
-        const match = cleaned.match(/[?&](?:file|path)=([^&]+)/);
-        cleaned = match ? decodeURIComponent(match[1]) : cleaned;
-      }
-    }
-
-    if (cleaned.startsWith("file://")) {
-      cleaned = safeDecodeUriComponent(cleaned.replace(/^file:\/+/, ""));
-      if (/^[A-Za-z]\//.test(cleaned)) {
-        cleaned = `${cleaned.charAt(0)}:/${cleaned.slice(2)}`;
-      }
-    }
-    cleaned = cleaned.replace(/[?#].*$/, "");
-    return normalizeVaultPath(safeDecodeUriComponent(cleaned));
-  }
-
-  absoluteToVaultPath(path, basePath) {
-    if (!basePath) {
-      return "";
-    }
-    const normalizedPath = normalizeVaultPath(path).toLowerCase();
-    const normalizedBase = normalizeVaultPath(basePath).toLowerCase();
-    if (!normalizedPath.startsWith(`${normalizedBase}/`)) {
-      return "";
-    }
-    return normalizeVaultPath(path).slice(normalizedBase.length + 1);
   }
 
   onEditorClick(event) {
@@ -4569,6 +4458,18 @@ class NovelerView extends ItemView {
     if (event.key === "Enter" && this.plugin.settings.automation.smartIndent) {
       const snapshot = this.getCurrentStyleSnapshot();
       window.setTimeout(() => this.applyStyleSnapshot(snapshot), 0);
+    }
+  }
+
+  onCapturedKeydown(event) {
+    const target = event.target;
+    if (!this.editorEl || !target || !this.editorEl.contains(target)) {
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.insertPageBreak();
     }
   }
 
@@ -4647,6 +4548,66 @@ class NovelerView extends ItemView {
     this.updateWordCount();
   }
 
+  copyFromContextMenu() {
+    this.focusForCommand();
+    const range = this.getSelectionRange();
+    if (!range || range.collapsed) {
+      return;
+    }
+    if (!document.execCommand("copy") && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(range.toString()).catch(() => new Notice("Noveler could not copy the selection."));
+    }
+  }
+
+  cutFromContextMenu() {
+    this.focusForCommand();
+    const range = this.getSelectionRange();
+    if (!range || range.collapsed) {
+      return;
+    }
+    if (!document.execCommand("cut")) {
+      const text = range.toString();
+      const clipboard = navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        new Notice("Noveler could not cut the selection.");
+        return;
+      }
+      clipboard.writeText(text).then(() => {
+        this.focusForCommand();
+        document.execCommand("delete", false, null);
+        this.afterClipboardEdit();
+      }).catch(() => new Notice("Noveler could not cut the selection."));
+      return;
+    }
+    this.afterClipboardEdit();
+  }
+
+  async pasteFromContextMenu() {
+    this.focusForCommand();
+    if (document.execCommand("paste")) {
+      this.afterClipboardEdit();
+      return;
+    }
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+        throw new Error("Clipboard API unavailable");
+      }
+      const text = await navigator.clipboard.readText();
+      this.insertText(text);
+      this.schedulePagination();
+    } catch (_error) {
+      new Notice("Noveler could not access the clipboard.");
+    }
+  }
+
+  afterClipboardEdit() {
+    this.captureSelection();
+    this.schedulePagination();
+    this.scheduleSave();
+    this.updateWordCount();
+    this.updateStatus("Unsaved changes");
+  }
+
   deletePreviousCharacter() {
     const range = this.getSelectionRange();
     if (!range || !range.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE || range.startOffset <= 0) {
@@ -4721,34 +4682,94 @@ class NovelerView extends ItemView {
       },
       getLineBreak: () => "\n",
       getZones: () => view.getAntidoteZones(checkWholeDocument),
-      canReplace: (start, end, context) => view.canReplaceAntidoteRange(start, end, context),
-      replaceRange: (start, end, text) => view.replaceAntidoteRange(start, end, text),
-      selectRange: (start, end) => view.selectAntidoteRange(start, end),
+      canReplace: (start, end, context, id) => view.canReplaceAntidoteRange(start, end, context, id),
+      replaceRange: (start, end, text, id) => view.replaceAntidoteRange(start, end, text, id),
+      selectRange: (start, end, id) => view.selectAntidoteRange(start, end, id),
       isAvailable: () => !!(view.editorEl && document.body.contains(view.editorEl)),
       focus: () => view.focusAntidoteDocument()
     };
   }
 
   getAntidoteZones(checkWholeDocument) {
+    if (checkWholeDocument) {
+      return this.getAntidoteZoneNodeGroups().map((group) => {
+        const snapshot = this.createAntidoteTextSnapshot(group.nodes);
+        return {
+          text: snapshot.text,
+          selectionStart: 0,
+          selectionEnd: 0,
+          id: group.id
+        };
+      }).filter((zone) => zone.text.trim());
+    }
     const snapshot = this.createAntidoteTextSnapshot();
     const selection = this.getAntidoteSelectionOffsets(snapshot);
-    if (checkWholeDocument && selection.start === selection.end) {
-      return [{ text: snapshot.text, selectionStart: 0, selectionEnd: 0, id: "0" }];
-    }
     return [{
       text: snapshot.text,
       selectionStart: selection.start,
       selectionEnd: selection.end,
-      id: "0"
+      id: "document"
     }];
   }
 
-  createAntidoteTextSnapshot() {
+  getAntidoteZoneNodeGroups() {
+    const contentNodes = this.getAntidoteContentNodes();
+    const groups = [];
+    for (let index = 0; index < contentNodes.length; index += 1) {
+      const node = contentNodes[index];
+      if (node.nodeType === Node.ELEMENT_NODE && ["ul", "ol"].includes(node.tagName.toLowerCase())) {
+        for (const item of Array.from(node.querySelectorAll(":scope > li"))) {
+          groups.push({ nodes: [item] });
+        }
+        continue;
+      }
+      const nodes = [node];
+      if (node.nodeType === Node.ELEMENT_NODE && node.hasAttribute("data-noveler-split-id")) {
+        const splitId = node.getAttribute("data-noveler-split-id");
+        while (
+          index + 1 < contentNodes.length
+          && contentNodes[index + 1].nodeType === Node.ELEMENT_NODE
+          && contentNodes[index + 1].getAttribute("data-noveler-split-id") === splitId
+        ) {
+          index += 1;
+          nodes.push(contentNodes[index]);
+        }
+      }
+      groups.push({ nodes });
+    }
+
+    return groups.map((group) => {
+      const elements = group.nodes.filter((node) => node.nodeType === Node.ELEMENT_NODE);
+      let id = "";
+      for (const element of elements) {
+        id = element.getAttribute("data-noveler-antidote-zone-id") || id;
+      }
+      if (!id) {
+        this.antidoteZoneSequence = (Number(this.antidoteZoneSequence) || 0) + 1;
+        id = `noveler-zone-${this.antidoteZoneSequence}`;
+      }
+      for (const element of elements) {
+        element.setAttribute("data-noveler-antidote-zone-id", id);
+      }
+      return { id, nodes: group.nodes };
+    });
+  }
+
+  getAntidoteSnapshotForZone(id) {
+    if (!id || id === "0" || id === "document") {
+      return this.createAntidoteTextSnapshot();
+    }
+    const nodes = Array.from(this.editorEl.querySelectorAll("[data-noveler-antidote-zone-id]"))
+      .filter((node) => node.getAttribute("data-noveler-antidote-zone-id") === String(id));
+    return nodes.length ? this.createAntidoteTextSnapshot(nodes) : null;
+  }
+
+  createAntidoteTextSnapshot(contentNodesOverride) {
     const snapshot = {
       text: "",
       positions: []
     };
-    const contentNodes = this.getAntidoteContentNodes();
+    const contentNodes = Array.isArray(contentNodesOverride) ? contentNodesOverride : this.getAntidoteContentNodes();
 
     const appendText = (node, text) => {
       const value = String(text || "");
@@ -4885,11 +4906,14 @@ class NovelerView extends ItemView {
     }
   }
 
-  canReplaceAntidoteRange(start, end, context) {
+  canReplaceAntidoteRange(start, end, context, id) {
     if (!this.editorEl) {
       return false;
     }
-    const snapshot = this.createAntidoteTextSnapshot();
+    const snapshot = this.getAntidoteSnapshotForZone(id);
+    if (!snapshot) {
+      return false;
+    }
     const safeStart = Math.max(0, Math.min(snapshot.text.length, Number(start) || 0));
     const safeEnd = Math.max(safeStart, Math.min(snapshot.text.length, Number(end) || safeStart));
     const expected = String(context || "");
@@ -4900,26 +4924,165 @@ class NovelerView extends ItemView {
     return actual === expected || snapshot.text.slice(safeStart, safeEnd + 1).startsWith(expected);
   }
 
-  replaceAntidoteRange(start, end, text) {
-    const snapshot = this.createAntidoteTextSnapshot();
-    const safeStart = Math.max(0, Math.min(snapshot.text.length, Number(start) || 0));
-    const safeEnd = Math.max(safeStart, Math.min(snapshot.text.length, Number(end) || safeStart));
-    const startPosition = this.getAntidoteDomPosition(snapshot, safeStart, "forward");
-    const endPosition = this.getAntidoteDomPosition(snapshot, safeEnd, "backward");
-    if (!startPosition || !endPosition) {
-      return Promise.resolve(false);
+  getAntidoteDiffTokens(value) {
+    const tokens = [];
+    const pattern = /\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu;
+    const text = String(value || "");
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      tokens.push({ value: match[0], start: match.index, end: match.index + match[0].length });
+    }
+    return tokens;
+  }
+
+  getAntidoteReplacementEdits(originalValue, replacementValue, baseStart) {
+    const original = String(originalValue || "");
+    const replacement = String(replacementValue || "");
+    if (original === replacement) {
+      return [];
     }
 
-    const range = document.createRange();
-    range.setStart(startPosition.node, startPosition.offset);
-    range.setEnd(endPosition.node, endPosition.offset);
-    range.deleteContents();
-    const replacement = document.createTextNode(String(text || ""));
-    range.insertNode(replacement);
-    range.setStartAfter(replacement);
-    range.collapse(true);
+    const originalTokens = this.getAntidoteDiffTokens(original);
+    const replacementTokens = this.getAntidoteDiffTokens(replacement);
+    if (!originalTokens.length || !replacementTokens.length || originalTokens.length * replacementTokens.length > 60000) {
+      let prefix = 0;
+      while (prefix < original.length && prefix < replacement.length && original[prefix] === replacement[prefix]) {
+        prefix += 1;
+      }
+      let suffix = 0;
+      while (
+        suffix < original.length - prefix
+        && suffix < replacement.length - prefix
+        && original[original.length - 1 - suffix] === replacement[replacement.length - 1 - suffix]
+      ) {
+        suffix += 1;
+      }
+      return [{
+        start: baseStart + prefix,
+        end: baseStart + original.length - suffix,
+        text: replacement.slice(prefix, replacement.length - suffix)
+      }];
+    }
+
+    const table = Array.from(
+      { length: originalTokens.length + 1 },
+      () => new Uint16Array(replacementTokens.length + 1)
+    );
+    for (let left = originalTokens.length - 1; left >= 0; left -= 1) {
+      for (let right = replacementTokens.length - 1; right >= 0; right -= 1) {
+        table[left][right] = originalTokens[left].value === replacementTokens[right].value
+          ? table[left + 1][right + 1] + 1
+          : Math.max(table[left + 1][right], table[left][right + 1]);
+      }
+    }
+
+    const matches = [];
+    let left = 0;
+    let right = 0;
+    while (left < originalTokens.length && right < replacementTokens.length) {
+      if (originalTokens[left].value === replacementTokens[right].value) {
+        matches.push({ original: originalTokens[left], replacement: replacementTokens[right] });
+        left += 1;
+        right += 1;
+      } else if (table[left + 1][right] >= table[left][right + 1]) {
+        left += 1;
+      } else {
+        right += 1;
+      }
+    }
+
+    const edits = [];
+    let originalOffset = 0;
+    let replacementOffset = 0;
+    for (const match of [...matches, {
+      original: { start: original.length, end: original.length },
+      replacement: { start: replacement.length, end: replacement.length }
+    }]) {
+      if (originalOffset !== match.original.start || replacementOffset !== match.replacement.start) {
+        edits.push({
+          start: baseStart + originalOffset,
+          end: baseStart + match.original.start,
+          text: replacement.slice(replacementOffset, match.replacement.start)
+        });
+      }
+      originalOffset = match.original.end;
+      replacementOffset = match.replacement.end;
+    }
+    return edits;
+  }
+
+  canApplyAntidoteTextEdit(snapshot, edit) {
+    if (edit.start === edit.end) {
+      const position = this.getAntidoteDomPosition(snapshot, edit.start, "forward");
+      return !!(position && position.node && position.node.nodeType === Node.TEXT_NODE);
+    }
+    for (let index = edit.start; index < edit.end; index += 1) {
+      const position = snapshot.positions[index];
+      if (!position || !position.node || position.node.nodeType !== Node.TEXT_NODE) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  applyAntidoteTextEdit(snapshot, edit) {
+    if (edit.start === edit.end) {
+      const position = this.getAntidoteDomPosition(snapshot, edit.start, "forward");
+      const value = position.node.nodeValue || "";
+      position.node.nodeValue = `${value.slice(0, position.offset)}${edit.text}${value.slice(position.offset)}`;
+      return;
+    }
+
+    const segments = [];
+    const byNode = new Map();
+    for (let index = edit.start; index < edit.end; index += 1) {
+      const position = snapshot.positions[index];
+      let segment = byNode.get(position.node);
+      if (!segment) {
+        segment = { node: position.node, start: position.offset, end: position.offset + 1 };
+        byNode.set(position.node, segment);
+        segments.push(segment);
+      } else {
+        segment.start = Math.min(segment.start, position.offset);
+        segment.end = Math.max(segment.end, position.offset + 1);
+      }
+    }
+
+    for (let index = segments.length - 1; index >= 1; index -= 1) {
+      const segment = segments[index];
+      const value = segment.node.nodeValue || "";
+      segment.node.nodeValue = `${value.slice(0, segment.start)}${value.slice(segment.end)}`;
+    }
+    const first = segments[0];
+    const value = first.node.nodeValue || "";
+    first.node.nodeValue = `${value.slice(0, first.start)}${edit.text}${value.slice(first.end)}`;
+  }
+
+  replaceAntidoteRange(start, end, text, id) {
+    const snapshot = this.getAntidoteSnapshotForZone(id);
+    if (!snapshot) {
+      return Promise.resolve(false);
+    }
+    const safeStart = Math.max(0, Math.min(snapshot.text.length, Number(start) || 0));
+    const safeEnd = Math.max(safeStart, Math.min(snapshot.text.length, Number(end) || safeStart));
+    const replacement = String(text || "");
+    const edits = this.getAntidoteReplacementEdits(snapshot.text.slice(safeStart, safeEnd), replacement, safeStart);
+    if (edits.some((edit) => !this.canApplyAntidoteTextEdit(snapshot, edit))) {
+      return Promise.resolve(false);
+    }
+    for (const edit of edits.slice().sort((left, right) => right.start - left.start)) {
+      this.applyAntidoteTextEdit(snapshot, edit);
+    }
+
+    const updatedSnapshot = this.getAntidoteSnapshotForZone(id);
+    const caretPosition = updatedSnapshot
+      ? this.getAntidoteDomPosition(updatedSnapshot, Math.min(updatedSnapshot.text.length, safeStart + replacement.length), "backward")
+      : null;
     const selection = window.getSelection();
-    if (selection) {
+    if (selection && caretPosition) {
+      const range = document.createRange();
+      range.setStart(caretPosition.node, caretPosition.offset);
+      range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
     }
@@ -4931,8 +5094,11 @@ class NovelerView extends ItemView {
     return Promise.resolve(true);
   }
 
-  selectAntidoteRange(start, end) {
-    const snapshot = this.createAntidoteTextSnapshot();
+  selectAntidoteRange(start, end, id) {
+    const snapshot = this.getAntidoteSnapshotForZone(id);
+    if (!snapshot) {
+      return;
+    }
     const safeStart = Math.max(0, Math.min(snapshot.text.length, Number(start) || 0));
     const safeEnd = Math.max(safeStart, Math.min(snapshot.text.length, Number(end) || safeStart));
     const startPosition = this.getAntidoteDomPosition(snapshot, safeStart, "forward");
@@ -5170,23 +5336,27 @@ class NovelerView extends ItemView {
     const storyLine = this.getStoryLinePluginForCodex();
     const menu = new Menu();
     this.storyLineContextMenu = menu;
+    menu.addItem((item) => item.setTitle("Copy").setIcon("copy").setDisabled(!selectedText).onClick(() => this.copyFromContextMenu()));
+    menu.addItem((item) => item.setTitle("Cut").setIcon("scissors").setDisabled(!selectedText).onClick(() => this.cutFromContextMenu()));
+    menu.addItem((item) => item.setTitle("Paste").setIcon("clipboard-paste").onClick(() => this.pasteFromContextMenu()));
+    menu.addSeparator();
     menu.addItem((item) => item.setTitle("Bold").setIcon("bold").onClick(() => this.format("bold")));
     menu.addItem((item) => item.setTitle("Italic").setIcon("italic").onClick(() => this.format("italic")));
     menu.addItem((item) => item.setTitle("Underline").setIcon("underline").onClick(() => this.format("underline")));
-    menu.addSeparator();
-    menu.addItem((item) => item.setTitle("Heading 1").setIcon("heading-1").onClick(() => this.applyHeading(1)));
-    menu.addItem((item) => item.setTitle("Dialogue paragraph").setIcon("message-square").onClick(() => this.applyParagraphStyle("dialogue")));
-    menu.addItem((item) => item.setTitle("Block quote").setIcon("quote").onClick(() => this.applyParagraphStyle("blockquote")));
-    menu.addItem((item) => item.setTitle("Scene break").setIcon("asterisk").onClick(() => this.insertSceneBreak(this.plugin.settings.sceneBreakGlyph, true)));
-    menu.addSeparator();
-    menu.addItem((item) => item.setTitle("Remove double spaces").setIcon("space").onClick(() => this.cleanupDocument({ doubleSpaces: true })));
-    menu.addItem((item) => item.setTitle("Normalize line breaks").setIcon("wrap-text").onClick(() => this.cleanupDocument({ lineBreaks: true })));
-    menu.addItem((item) => item.setTitle("Smarten punctuation").setIcon("wand-sparkles").onClick(() => this.cleanupDocument({ punctuation: true })));
-    if (storyLine) {
+    if (storyLine && selectedText) {
       menu.addSeparator();
-      this.addStoryLineContextCategory(menu, storyLine, "character", "Characters >", "users", selectedText);
-      this.addStoryLineContextCategory(menu, storyLine, "location", "Locations >", "map-pin", selectedText);
-      this.addStoryLineContextCategory(menu, storyLine, "item", "Items >", "package", selectedText);
+      const currentScene = storyLine.sceneManager && typeof storyLine.sceneManager.getScene === "function"
+        ? storyLine.sceneManager.getScene(normalizeVaultPath(this.currentDocumentPath))
+        : null;
+      if (currentScene) {
+        menu.addItem((item) => item
+          .setTitle("Annotation")
+          .setIcon("message-square-text")
+          .onClick(() => this.createStoryLineAnnotation()));
+      }
+      this.addStoryLineContextCategory(menu, storyLine, "character", "Characters", "users", selectedText);
+      this.addStoryLineContextCategory(menu, storyLine, "location", "Locations", "map-pin", selectedText);
+      this.addStoryLineContextCategory(menu, storyLine, "item", "Items", "package", selectedText);
     }
     menu.showAtMouseEvent(event);
   }
@@ -5206,6 +5376,9 @@ class NovelerView extends ItemView {
       }
       anchor.addClass("noveler-storyline-context-parent");
       anchor.setAttribute("aria-haspopup", "menu");
+      const chevron = anchor.createSpan({ cls: "noveler-storyline-context-chevron" });
+      chevron.setAttribute("aria-hidden", "true");
+      setIcon(chevron, "chevron-right");
       const openSubmenu = () => {
         this.cancelStoryLineContextClose();
         this.openStoryLineContextSubmenu(anchor, storyLine, kind, selectedText);
@@ -5501,6 +5674,226 @@ class NovelerView extends ItemView {
     return typeof plugins.getPlugin === "function" ? plugins.getPlugin("storyline") : null;
   }
 
+  async createStoryLineAnnotation() {
+    const range = this.lastRange && !this.lastRange.collapsed ? this.lastRange.cloneRange() : this.getSelectionRange();
+    const state = this.captureEditorSelectionState(range);
+    const selectedText = range ? range.toString() : "";
+    if (!range || !state || !selectedText.trim()) {
+      new Notice("Select manuscript text before creating an annotation.");
+      return;
+    }
+    const scenePath = normalizeVaultPath(this.currentDocumentPath);
+    const storyLine = this.getStoryLinePluginForCodex();
+    if (!scenePath || !storyLine || !storyLine.sceneManager) {
+      new Notice("Annotations require an active StoryLine scene.");
+      return;
+    }
+
+    const fullRange = document.createRange();
+    fullRange.selectNodeContents(this.editorEl);
+    const documentText = fullRange.toString();
+    const payload = {
+      v: 1,
+      s: state.start,
+      e: state.end,
+      q: selectedText,
+      p: documentText.slice(Math.max(0, state.start - 72), state.start),
+      x: documentText.slice(state.end, state.end + 72)
+    };
+
+    try {
+      await this.saveDocument({ silent: true });
+      if (typeof storyLine.sceneManager.initialize === "function") {
+        await storyLine.sceneManager.initialize();
+      }
+      if (typeof storyLine.reloadEntities === "function") {
+        await storyLine.reloadEntities();
+      }
+      const scene = typeof storyLine.sceneManager.getScene === "function"
+        ? storyLine.sceneManager.getScene(scenePath)
+        : null;
+      if (!scene) {
+        new Notice("The active file is not a StoryLine scene.");
+        return;
+      }
+      if (typeof storyLine.sceneManager.getOrCreateSceneNotesFile !== "function") {
+        throw new Error("StoryLine Scene Notes API is unavailable");
+      }
+      const notesPath = normalizeVaultPath(await storyLine.sceneManager.getOrCreateSceneNotesFile(scene));
+      const notesFile = this.plugin.app.vault.getAbstractFileByPath(notesPath);
+      if (!(notesFile instanceof TFile)) {
+        throw new Error("StoryLine could not create the Scene Notes file");
+      }
+
+      const encoded = encodeAnnotationPayload(payload);
+      const excerpt = selectedText.replace(/\s+/g, " ").trim().slice(0, 80).replace(/[|\]]/g, "/");
+      const annotationLine = `- [[${scenePath}${ANNOTATION_LINK_MARKER}${encoded}|Annotation: ${excerpt}${selectedText.trim().length > 80 ? "..." : ""}]]`;
+      let updatedContent = "";
+      const appendAnnotation = (content) => {
+        const current = String(content || "");
+        const separator = current && !current.endsWith("\n") ? "\n" : "";
+        updatedContent = `${current}${separator}${annotationLine}\n`;
+        return updatedContent;
+      };
+      if (typeof this.plugin.app.vault.process === "function") {
+        await this.plugin.app.vault.process(notesFile, appendAnnotation);
+      } else {
+        await this.plugin.app.vault.modify(notesFile, appendAnnotation(await this.plugin.app.vault.read(notesFile)));
+      }
+      this.refreshOpenSceneNotesEditors(notesPath, updatedContent);
+      this.updateStatus("Annotation added to Scene Notes");
+      new Notice("Annotation added to StoryLine Scene Notes.");
+    } catch (error) {
+      console.error("Noveler could not create the StoryLine annotation.", error);
+      new Notice(`Could not create annotation: ${error.message || String(error)}`);
+    }
+  }
+
+  refreshOpenSceneNotesEditors(notesPath, content) {
+    const visited = new Set();
+    const updateView = (view) => {
+      if (!view || visited.has(view)) {
+        return;
+      }
+      visited.add(view);
+      const filePath = view.file && view.file.path ? normalizeVaultPath(view.file.path) : "";
+      if (filePath === notesPath && view.editor && typeof view.editor.getValue === "function" && typeof view.editor.setValue === "function") {
+        if (view.editor.getValue() !== content) {
+          view.editor.setValue(content);
+        }
+      }
+      if (normalizeVaultPath(view.currentNotesPath) === notesPath && view.editorLeaf && view.editorLeaf.view) {
+        updateView(view.editorLeaf.view);
+      }
+    };
+    if (this.plugin.app.workspace && typeof this.plugin.app.workspace.iterateAllLeaves === "function") {
+      this.plugin.app.workspace.iterateAllLeaves((leaf) => updateView(leaf.view));
+    }
+  }
+
+  createAnnotationRange(start, end) {
+    if (!this.editorEl || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return null;
+    }
+    const startPosition = this.getTextPosition(this.editorEl, start, "forward");
+    const endPosition = this.getTextPosition(this.editorEl, end, "backward");
+    if (!startPosition || !endPosition) {
+      return null;
+    }
+    const range = document.createRange();
+    range.setStart(startPosition.node, startPosition.offset);
+    range.setEnd(endPosition.node, endPosition.offset);
+    return range;
+  }
+
+  resolveAnnotationOffsets(payload, documentText) {
+    const quote = String(payload && payload.q || "");
+    const expectedStart = Math.max(0, Number(payload && payload.s) || 0);
+    const expectedEnd = Math.max(expectedStart, Number(payload && payload.e) || expectedStart + quote.length);
+    if (quote && documentText.slice(expectedStart, expectedEnd) === quote) {
+      return { start: expectedStart, end: expectedEnd };
+    }
+
+    if (quote) {
+      const candidates = [];
+      let index = documentText.indexOf(quote);
+      while (index >= 0) {
+        const before = documentText.slice(Math.max(0, index - String(payload.p || "").length), index);
+        const after = documentText.slice(index + quote.length, index + quote.length + String(payload.x || "").length);
+        let score = -Math.abs(index - expectedStart);
+        if (payload.p && before === payload.p) {
+          score += 100000;
+        }
+        if (payload.x && after === payload.x) {
+          score += 100000;
+        }
+        candidates.push({ start: index, end: index + quote.length, score });
+        index = documentText.indexOf(quote, index + 1);
+      }
+      if (candidates.length) {
+        candidates.sort((left, right) => right.score - left.score);
+        return candidates[0];
+      }
+    }
+
+    const prefix = String(payload && payload.p || "");
+    const suffix = String(payload && payload.x || "");
+    if (prefix && suffix) {
+      const prefixIndex = documentText.lastIndexOf(prefix, Math.min(documentText.length, expectedStart + prefix.length + 500));
+      if (prefixIndex >= 0) {
+        const start = prefixIndex + prefix.length;
+        const end = documentText.indexOf(suffix, start);
+        if (end >= start && end - start <= Math.max(quote.length + 1000, 2000)) {
+          return { start, end };
+        }
+      }
+    }
+    if (expectedEnd <= documentText.length && expectedEnd > expectedStart) {
+      return { start: expectedStart, end: expectedEnd };
+    }
+    return null;
+  }
+
+  revealAnnotation(payload) {
+    if (!this.editorEl || !payload) {
+      return false;
+    }
+    if (this.paginationTimer) {
+      window.clearTimeout(this.paginationTimer);
+      this.paginationTimer = null;
+      this.paginateEditor();
+    }
+    const fullRange = document.createRange();
+    fullRange.selectNodeContents(this.editorEl);
+    const documentText = fullRange.toString();
+    const offsets = this.resolveAnnotationOffsets(payload, documentText);
+    const range = offsets && this.createAnnotationRange(offsets.start, offsets.end);
+    if (!range) {
+      return false;
+    }
+
+    this.clearAnnotationHighlight();
+    this.annotationHighlightRange = range.cloneRange();
+    if (typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined") {
+      CSS.highlights.set("noveler-annotation-highlight", new Highlight(this.annotationHighlightRange));
+    }
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      this.captureSelection();
+    }
+    this.editorEl.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => this.scrollAnnotationIntoView(range));
+    return true;
+  }
+
+  scrollAnnotationIntoView(range) {
+    if (!range || !this.workAreaEl) {
+      return;
+    }
+    const rect = Array.from(range.getClientRects()).find((candidate) => candidate.width || candidate.height)
+      || range.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+    const viewport = this.workAreaEl.getBoundingClientRect();
+    const top = this.workAreaEl.scrollTop + rect.top + rect.height / 2 - viewport.top - viewport.height / 2;
+    const left = this.workAreaEl.scrollLeft + rect.left + rect.width / 2 - viewport.left - viewport.width / 2;
+    this.workAreaEl.scrollTo({
+      top: Math.max(0, top),
+      left: Math.max(0, left),
+      behavior: "smooth"
+    });
+  }
+
+  clearAnnotationHighlight() {
+    this.annotationHighlightRange = null;
+    if (typeof CSS !== "undefined" && CSS.highlights) {
+      CSS.highlights.delete("noveler-annotation-highlight");
+    }
+  }
+
   async createStoryLineCodexEntry(kind, selectedText) {
     const name = String(selectedText || "").replace(/\s+/g, " ").trim();
     if (!name) {
@@ -5716,6 +6109,11 @@ class NovelerView extends ItemView {
     }
     bridge.visualLinkCategories[kind] = bridge.visualLinkCategories[kind] === false;
     bridge.visualLinks = Object.values(bridge.visualLinkCategories).some((enabled) => enabled !== false);
+    const settingDraft = this.plugin.settingTab && this.plugin.settingTab.draftSettings;
+    if (settingDraft && settingDraft.storyLineBridge) {
+      settingDraft.storyLineBridge.visualLinkCategories = clone(bridge.visualLinkCategories);
+      settingDraft.storyLineBridge.visualLinks = bridge.visualLinks;
+    }
     await this.plugin.saveSettings();
     this.buildStatusControls();
     this.scheduleStoryLineVisualLinks();
@@ -6003,25 +6401,6 @@ class NovelerView extends ItemView {
     return true;
   }
 
-  cleanupDocument(options) {
-    if (!this.editorEl) {
-      return;
-    }
-
-    if (options.doubleSpaces) {
-      this.cleanTextNodes(this.editorEl, (text) => text.replace(/[ \t]{2,}/g, " "));
-    }
-    if (options.punctuation) {
-      this.cleanTextNodes(this.editorEl, (text) => this.smartenText(text));
-    }
-    if (options.lineBreaks) {
-      this.editorEl.innerHTML = this.normalizeBreakHtml(this.editorEl.innerHTML);
-    }
-    this.scheduleSave();
-    this.updateWordCount();
-    this.updateStatus("Cleaned up");
-  }
-
   cleanTextNodes(root, transform) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -6031,25 +6410,6 @@ class NovelerView extends ItemView {
     for (const node of nodes) {
       node.nodeValue = transform(node.nodeValue || "");
     }
-  }
-
-  smartenText(text) {
-    let result = "";
-    for (let index = 0; index < text.length; index += 1) {
-      const char = text[index];
-      const previous = result.slice(-1);
-      if (char === '"') {
-        result += !previous || /[\s([{<\-–—]$/.test(previous) ? "“" : "”";
-      } else if (char === "'") {
-        result += previous && /[A-Za-z0-9]$/.test(previous) ? "’" : "‘";
-      } else {
-        result += char;
-      }
-    }
-    return result
-      .replace(/---/g, "—")
-      .replace(/--/g, "–")
-      .replace(/(^|[.!?]\s+)([a-z])/g, (_match, lead, letter) => `${lead}${letter.toUpperCase()}`);
   }
 
   normalizeBreakHtml(html) {
@@ -6113,9 +6473,26 @@ class NovelerView extends ItemView {
     return Array.from(element.childNodes).map((node) => this.nodeToMarkdown(node)).join("");
   }
 
+  escapeMarkdownText(value) {
+    return String(value || "")
+      .replace(/([\\`*_[\]~#<>])/g, "\\$1")
+      .replace(/(^|\n)(\s*)(-{3,})(?=\s*(?:\n|$))/g, "$1$2\\$3")
+      .replace(/(^|\n)(\s*)([-+])(?=\s)/g, "$1$2\\$3")
+      .replace(/(^|\n)(\s*)(\d+)\.(?=\s)/g, "$1$2$3\\.");
+  }
+
+  wrapMarkdownInline(value, marker) {
+    const content = String(value || "");
+    const leading = content.match(/^\s*/)[0];
+    const trailing = content.match(/\s*$/)[0];
+    const end = Math.max(leading.length, content.length - trailing.length);
+    const core = content.slice(leading.length, end);
+    return core ? `${leading}${marker}${core}${marker}${trailing}` : content;
+  }
+
   nodeToMarkdown(node) {
     if (node.nodeType === Node.TEXT_NODE) {
-      return node.textContent || "";
+      return this.escapeMarkdownText(node.textContent || "");
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
       return "";
@@ -6126,19 +6503,20 @@ class NovelerView extends ItemView {
     if (element.hasClass("noveler-page") || element.hasClass("noveler-pagination-marker")) {
       return "";
     }
-    const content = this.childrenToMarkdown(element).trim();
+    const content = this.childrenToMarkdown(element);
+    const blockContent = content.trim();
 
     if (/^h[1-6]$/.test(tag)) {
       if (element.getAttribute("style") || Array.from(element.classList).some((name) => name.startsWith("noveler-"))) {
         return sanitizeEditorHtml(element.outerHTML);
       }
-      return `${"#".repeat(Number(tag.charAt(1)))} ${content}`;
+      return `${"#".repeat(Number(tag.charAt(1)))} ${blockContent}`;
     }
     if (tag === "p") {
       if (element.getAttribute("style") || Array.from(element.classList).some((name) => name.startsWith("noveler-") && name !== "noveler-style-normal")) {
         return sanitizeEditorHtml(element.outerHTML);
       }
-      return content;
+      return blockContent;
     }
     if (tag === "span" || tag === "font") {
       const color = this.getInlineTextColor(element);
@@ -6151,13 +6529,13 @@ class NovelerView extends ItemView {
       return content;
     }
     if (tag === "strong" || tag === "b") {
-      return `**${content}**`;
+      return this.wrapMarkdownInline(content, "**");
     }
     if (tag === "em" || tag === "i") {
-      return `*${content}*`;
+      return this.wrapMarkdownInline(content, "*");
     }
     if (tag === "s" || tag === "strike") {
-      return `~~${content}~~`;
+      return this.wrapMarkdownInline(content, "~~");
     }
     if (tag === "u") {
       return `<u>${content}</u>`;
@@ -6196,7 +6574,7 @@ class NovelerView extends ItemView {
       if (element.getAttribute("style") || Array.from(element.classList).some((name) => name.startsWith("noveler-"))) {
         return sanitizeEditorHtml(element.outerHTML);
       }
-      return content.split("\n").map((line) => `> ${line}`).join("\n");
+      return blockContent.split("\n").map((line) => `> ${line}`).join("\n");
     }
     if (tag === "hr") {
       return "---";
@@ -6211,19 +6589,19 @@ class NovelerView extends ItemView {
       return this.listToMarkdown(element, 0);
     }
     if (tag === "li") {
-      return content;
+      return blockContent;
     }
     if (element.hasClass("noveler-scene-break")) {
       if (element.hasClass("is-centered")) {
         return sanitizeEditorHtml(element.outerHTML);
       }
-      return content || this.plugin.settings.sceneBreakGlyph;
+      return blockContent || this.plugin.settings.sceneBreakGlyph;
     }
     if (tag === "div") {
       if (element.getAttribute("style") || Array.from(element.classList).some((name) => name.startsWith("noveler-"))) {
         return sanitizeEditorHtml(element.outerHTML);
       }
-      return content;
+      return blockContent;
     }
     return content;
   }
@@ -6291,181 +6669,146 @@ class NovelerSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass("noveler-settings");
     if (!this.draftSettings) {
       this.draftSettings = clone(this.plugin.settings);
       this.draftSettings.typography = clone(this.plugin.globalTypography || this.plugin.settings.typography);
     }
     const draft = this.draftSettings;
-    if (!draft.headingStyles || typeof draft.headingStyles !== "object") {
-      draft.headingStyles = clone(DEFAULT_SETTINGS.headingStyles);
-    }
-    if (!draft.focus || typeof draft.focus !== "object") {
-      draft.focus = clone(DEFAULT_SETTINGS.focus);
-    }
-    if (!draft.storyLineBridge || typeof draft.storyLineBridge !== "object") {
-      draft.storyLineBridge = clone(DEFAULT_SETTINGS.storyLineBridge);
-    }
-    if (!draft.storyLineBridge.visualLinkCategories || typeof draft.storyLineBridge.visualLinkCategories !== "object") {
-      draft.storyLineBridge.visualLinkCategories = clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkCategories);
-    }
-    if (!draft.storyLineBridge.visualLinkColors || typeof draft.storyLineBridge.visualLinkColors !== "object") {
-      draft.storyLineBridge.visualLinkColors = clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkColors);
-    }
-    const saveDraft = async () => {
-      draft.typography = clone(this.plugin.globalTypography || draft.typography || DEFAULT_SETTINGS.typography);
-      this.plugin.settings = mergeSettings(draft);
-      this.plugin.globalTypography = clone(this.plugin.settings.typography);
-      this.draftSettings = null;
-      await this.plugin.saveSettings();
-      new Notice(`Noveler settings saved to ${this.plugin.getSettingsFilePath()}.`);
-      this.display();
-    };
+    draft.headingStyles = draft.headingStyles && typeof draft.headingStyles === "object"
+      ? draft.headingStyles
+      : clone(DEFAULT_SETTINGS.headingStyles);
+    draft.focus = draft.focus && typeof draft.focus === "object" ? draft.focus : clone(DEFAULT_SETTINGS.focus);
+    draft.integrations = draft.integrations && typeof draft.integrations === "object" ? draft.integrations : {};
+    draft.export = draft.export && typeof draft.export === "object" ? draft.export : clone(DEFAULT_SETTINGS.export);
+    draft.export.epubLanguage = normalizeEpubLanguage(draft.export.epubLanguage);
+    draft.storyLineBridge = draft.storyLineBridge && typeof draft.storyLineBridge === "object"
+      ? draft.storyLineBridge
+      : clone(DEFAULT_SETTINGS.storyLineBridge);
+    draft.storyLineBridge.visualLinkColors = draft.storyLineBridge.visualLinkColors && typeof draft.storyLineBridge.visualLinkColors === "object"
+      ? draft.storyLineBridge.visualLinkColors
+      : clone(DEFAULT_SETTINGS.storyLineBridge.visualLinkColors);
+    this.enforceRequiredIntegrations(draft);
 
-    containerEl.createEl("h2", { text: "Noveler" });
-    if (this.plugin.isStoryLineBridgeEnabled()) {
-      containerEl.createEl("p", {
-        cls: "setting-item-description",
-        text: "StoryLine bridge is enabled. Noveler will only open and save StoryLine scene files."
-      });
-    }
+    const header = containerEl.createDiv({ cls: "noveler-settings-header" });
+    const headerIcon = header.createDiv({ cls: "noveler-settings-header-icon" });
+    setIcon(headerIcon, "book-open-text");
+    const headerText = header.createDiv();
+    headerText.createEl("h2", { text: "Noveler" });
+    headerText.createEl("p", { text: "Writing environment, page presentation, and StoryLine workflow." });
 
-    new Setting(containerEl)
-      .setName("Save changes")
-      .setDesc(`Settings are applied after saving and written to ${this.plugin.getSettingsFilePath()}.`)
-      .addButton((button) => button
-        .setButtonText("Save settings")
-        .setCta()
-        .onClick(saveDraft));
+    const editorSection = this.createSettingsSection(containerEl, {
+      title: "Editor",
+      description: "Page presentation and external plugin availability",
+      icon: "panel-top",
+      accent: "#3b82f6",
+      open: true
+    });
+    this.attachSectionUndo(editorSection, draft, "layout", "Editor");
+    const integrationGrid = editorSection.createDiv({ cls: "noveler-integration-grid" });
+    this.addPluginStatusCard(integrationGrid, ["storyline"], "StoryLine", "library");
+    this.addPluginStatusCard(
+      integrationGrid,
+      ["antidote-grammar-checker-integration", "aantidote-grammar-checker-integration"],
+      "Antidote",
+      "spell-check-2",
+      ["Antidote Grammar Checker Integration"]
+    );
 
-    containerEl.createEl("h3", { text: "Page defaults" });
-
-    new Setting(containerEl)
-      .setName("Editor mode")
-      .setDesc("Choose whether Noveler opens in fixed Page mode or immersive Focus mode.")
+    const editorGrid = editorSection.createDiv({ cls: "noveler-settings-grid" });
+    new Setting(editorGrid)
+      .setName("Opening mode")
+      .setDesc("The layout used when Noveler opens.")
       .addDropdown((dropdown) => dropdown
-        .addOption("page", "Page mode")
-        .addOption("focus", "Focus mode")
+        .addOption("page", "Page")
+        .addOption("focus", "Focus")
         .setValue(draft.layout.mode === "focus" ? "focus" : "page")
         .onChange((value) => {
           draft.layout.mode = value === "focus" ? "focus" : "page";
         }));
-
-    new Setting(containerEl)
-      .setName("Ruler units")
-      .setDesc("Choose how Noveler labels page and margin rulers.")
+    new Setting(editorGrid)
+      .setName("Measurement system")
+      .setDesc("Used by rulers and margin controls.")
       .addDropdown((dropdown) => dropdown
-        .addOption("imperial", "Imperial (inches)")
-        .addOption("metric", "Metric (centimeters)")
-        .setValue(draft.layout.rulerUnits)
+        .addOption("imperial", "Imperial")
+        .addOption("metric", "Metric")
+        .setValue(draft.layout.rulerUnits === "metric" ? "metric" : "imperial")
         .onChange((value) => {
           draft.layout.rulerUnits = value === "metric" ? "metric" : "imperial";
           this.display();
         }));
-
-    new Setting(containerEl)
-      .setName("Page size")
-      .setDesc("Choose the page preset used in page mode.")
+    new Setting(editorGrid)
+      .setName("Page format")
+      .setDesc("Physical dimensions used in Page mode.")
       .addDropdown((dropdown) => {
         for (const [value, label] of getPagePresetOptions()) {
           dropdown.addOption(value, label);
         }
-        dropdown
-          .setValue(PAGE_SIZE_PRESETS[draft.layout.pageSize] ? draft.layout.pageSize : "custom")
-          .onChange((value) => {
-            const preset = PAGE_SIZE_PRESETS[value];
-            if (!preset) {
-              return;
-            }
+        dropdown.setValue(PAGE_SIZE_PRESETS[draft.layout.pageSize] ? draft.layout.pageSize : "custom").onChange((value) => {
+          const preset = PAGE_SIZE_PRESETS[value];
+          if (preset) {
             draft.layout.pageSize = value;
             draft.layout.pageWidth = cmToPx(preset.widthCm);
             draft.layout.pageHeight = cmToPx(preset.heightCm);
-          });
+          }
+        });
       });
-
-    new Setting(containerEl)
+    new Setting(editorGrid)
       .setName("Page zoom")
-      .setDesc("Default visual zoom used in page mode.")
+      .setDesc("Default magnification in Page mode.")
       .addDropdown((dropdown) => {
         for (const [value, label] of getZoomOptions(draft.layout.pageZoom)) {
           dropdown.addOption(value, label);
         }
-        dropdown
-          .setValue(String(draft.layout.pageZoom || DEFAULT_SETTINGS.layout.pageZoom))
-          .onChange((value) => {
-            draft.layout.pageZoom = Number(value) || DEFAULT_SETTINGS.layout.pageZoom;
-          });
-      });
-
-    new Setting(containerEl)
-      .setName("Header/footer text size")
-      .setDesc("Visual page header and footer size in points.")
-      .addText((text) => {
-        const update = (value) => {
-          const size = Number(value);
-          if (Number.isFinite(size)) {
-            draft.layout.headerFooterFontSize = Math.max(6, Math.min(36, size));
-          }
-        };
-        text
-          .setPlaceholder(String(DEFAULT_SETTINGS.layout.headerFooterFontSize))
-          .setValue(String(draft.layout.headerFooterFontSize || DEFAULT_SETTINGS.layout.headerFooterFontSize))
-          .onChange(update);
-        text.inputEl.addEventListener("input", () => update(text.inputEl.value));
-      });
-
-    const unitLabel = draft.layout.rulerUnits === "metric" ? "cm" : "in";
-    const addMarginSetting = (name, key) => {
-      new Setting(containerEl)
-        .setName(name)
-        .setDesc(`Default ${name.toLowerCase()} in ${unitLabel}. Standard manuscript margins are 1 in / 2.54 cm.`)
-        .addText((text) => {
-          const update = (value) => {
-            const px = unitValueToPx(value, draft.layout.rulerUnits);
-            if (px > 0) {
-              draft.layout[key] = px;
-            }
-          };
-          text
-            .setPlaceholder(unitLabel === "cm" ? "2.54" : "1")
-            .setValue(String(pxToUnitValue(draft.layout[key], draft.layout.rulerUnits)))
-            .onChange(update);
-          text.inputEl.addEventListener("input", () => update(text.inputEl.value));
+        dropdown.setValue(String(draft.layout.pageZoom || DEFAULT_SETTINGS.layout.pageZoom)).onChange((value) => {
+          draft.layout.pageZoom = Number(value) || DEFAULT_SETTINGS.layout.pageZoom;
         });
-    };
+      });
+    new Setting(editorGrid)
+      .setName("Header and footer size")
+      .setDesc("Visual text size in points.")
+      .addText((text) => {
+        text.setValue(String(draft.layout.headerFooterFontSize || DEFAULT_SETTINGS.layout.headerFooterFontSize));
+        text.inputEl.type = "number";
+        text.inputEl.min = "6";
+        text.inputEl.max = "36";
+        text.inputEl.addEventListener("input", () => {
+          const value = Number(text.inputEl.value);
+          if (Number.isFinite(value)) {
+            draft.layout.headerFooterFontSize = Math.max(6, Math.min(36, value));
+          }
+        });
+      });
+    this.addMarginEditor(editorSection, draft);
 
-    addMarginSetting("Top margin", "marginTop");
-    addMarginSetting("Right margin", "marginRight");
-    addMarginSetting("Bottom margin", "marginBottom");
-    addMarginSetting("Left margin", "marginLeft");
-
-    containerEl.createEl("h3", { text: "Focus mode" });
-
-    new Setting(containerEl)
+    const focusSection = this.createSettingsSection(containerEl, {
+      title: "Focus mode",
+      description: "Distraction-free writing behavior",
+      icon: "scan-line",
+      accent: "#8b5cf6"
+    });
+    this.attachSectionUndo(focusSection, draft, "focus", "Focus mode");
+    const focusGrid = focusSection.createDiv({ cls: "noveler-settings-grid" });
+    new Setting(focusGrid)
       .setName("Default zoom")
-      .setDesc("Visual zoom used whenever the editor is in Focus mode.")
+      .setDesc("Magnification used in Focus mode.")
       .addDropdown((dropdown) => {
         for (const [value, label] of getZoomOptions(draft.focus.defaultZoom)) {
           dropdown.addOption(value, label);
         }
-        dropdown
-          .setValue(String(draft.focus.defaultZoom || DEFAULT_SETTINGS.focus.defaultZoom))
-          .onChange((value) => {
-            draft.focus.defaultZoom = Number(value) || DEFAULT_SETTINGS.focus.defaultZoom;
-          });
+        dropdown.setValue(String(draft.focus.defaultZoom || DEFAULT_SETTINGS.focus.defaultZoom)).onChange((value) => {
+          draft.focus.defaultZoom = Number(value) || DEFAULT_SETTINGS.focus.defaultZoom;
+        });
       });
-
-    new Setting(containerEl)
+    new Setting(focusGrid)
       .setName("Typewriter mode")
-      .setDesc("Keep the line containing the text cursor centered while writing and navigating.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.focus.typewriter !== false)
-        .onChange((value) => {
-          draft.focus.typewriter = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Focus scope")
-      .setDesc("Choose whether the current visual line or its entire paragraph remains fully visible.")
+      .setDesc("Keep the active writing position centered.")
+      .addToggle((toggle) => toggle.setValue(draft.focus.typewriter !== false).onChange((value) => {
+        draft.focus.typewriter = value;
+      }));
+    new Setting(focusGrid)
+      .setName("Focus target")
+      .setDesc("Emphasize the current visual line or paragraph.")
       .addDropdown((dropdown) => dropdown
         .addOption("line", "Current line")
         .addOption("paragraph", "Current paragraph")
@@ -6473,102 +6816,58 @@ class NovelerSettingTab extends PluginSettingTab {
         .onChange((value) => {
           draft.focus.highlightScope = value === "paragraph" ? "paragraph" : "line";
         }));
+    new Setting(focusGrid)
+      .setName("Dim surrounding text")
+      .setDesc("Reduce the opacity outside the focus target.")
+      .addToggle((toggle) => toggle.setValue(draft.focus.dimUnfocusedLines !== false).onChange((value) => {
+        draft.focus.dimUnfocusedLines = value;
+      }));
 
-    new Setting(containerEl)
-      .setName("Dim unfocused lines")
-      .setDesc("Reduce opacity outside the current line or paragraph, according to the Focus scope setting.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.focus.dimUnfocusedLines !== false)
-        .onChange((value) => {
-          draft.focus.dimUnfocusedLines = value;
-        }));
-
-    containerEl.createEl("h3", { text: "Heading styles" });
-    containerEl.createEl("p", {
-      cls: "setting-item-description",
-      text: "Each row controls font, size, weight, style, and alignment for the matching manuscript heading."
+    const headingSection = this.createSettingsSection(containerEl, {
+      title: "Heading styles",
+      description: "Typography presets for manuscript headings",
+      icon: "heading",
+      accent: "#ec4899"
     });
+    this.attachSectionUndo(headingSection, draft, "headingStyles", "Heading styles");
+    const headingList = headingSection.createDiv({ cls: "noveler-heading-style-list" });
     for (let level = 1; level <= 6; level += 1) {
-      this.addHeadingStyleSetting(containerEl, draft, level);
+      this.addModernHeadingStyle(headingList, draft, level);
     }
 
-    containerEl.createEl("h3", { text: "Editing" });
-
-    new Setting(containerEl)
-      .setName("Open dropped files")
-      .setDesc("Allow Markdown, text, and HTML files dropped into the editor window to open in Noveler.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.fileOpen.allowDropOpen)
-        .onChange((value) => {
-          draft.fileOpen.allowDropOpen = value;
+    const editingSection = this.createSettingsSection(containerEl, {
+      title: "Editing",
+      description: "Typing assistance and save-time normalization",
+      icon: "text-cursor-input",
+      accent: "#10b981"
+    });
+    this.attachSectionUndo(editingSection, draft, "automation", "Editing");
+    const editingGrid = editingSection.createDiv({ cls: "noveler-settings-grid" });
+    const editingOptions = [
+      ["Smart quotes", "Convert straight quotes while typing.", "smartQuotes"],
+      ["Smart dashes", "Convert repeated hyphens into manuscript dashes.", "smartDashes"],
+      ["Auto-capitalization", "Capitalize after sentence-ending punctuation.", "autoCapitalize"],
+      ["Smart indenting", "Carry paragraph styling into the next paragraph.", "smartIndent"],
+      ["Remove double spaces on save", "Collapse repeated spaces in saved output.", "removeDoubleSpacesOnSave"],
+      ["Normalize line breaks on save", "Limit repeated blank paragraphs in saved output.", "normalizeLineBreaksOnSave"]
+    ];
+    for (const [name, description, key] of editingOptions) {
+      new Setting(editingGrid)
+        .setName(name)
+        .setDesc(description)
+        .addToggle((toggle) => toggle.setValue(draft.automation[key] !== false).onChange((value) => {
+          draft.automation[key] = value;
         }));
+    }
 
-    new Setting(containerEl)
-      .setName("Smart quotes")
-      .setDesc("Convert straight quotes while typing.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.smartQuotes)
-        .onChange((value) => {
-          draft.automation.smartQuotes = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Smart dashes")
-      .setDesc("Convert repeated hyphens into manuscript dashes while typing.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.smartDashes)
-        .onChange((value) => {
-          draft.automation.smartDashes = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Auto-capitalization")
-      .setDesc("Capitalize letters typed after sentence-ending punctuation.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.autoCapitalize)
-        .onChange((value) => {
-          draft.automation.autoCapitalize = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Smart indenting")
-      .setDesc("Carry paragraph style classes across new paragraphs.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.smartIndent)
-        .onChange((value) => {
-          draft.automation.smartIndent = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Remove double spaces on save")
-      .setDesc("Collapse repeated spaces in saved output.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.removeDoubleSpacesOnSave)
-        .onChange((value) => {
-          draft.automation.removeDoubleSpacesOnSave = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Normalize line breaks on save")
-      .setDesc("Limit consecutive blank paragraphs in saved output.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.automation.normalizeLineBreaksOnSave)
-        .onChange((value) => {
-          draft.automation.normalizeLineBreaksOnSave = value;
-        }));
-
-    containerEl.createEl("h3", { text: "Integrations" });
-
-    new Setting(containerEl)
-      .setName("StoryLine bridge")
-      .setDesc("Route StoryLine scene editing, Manuscript views, and formatted exports through Noveler.")
-      .addToggle((toggle) => toggle
-        .setValue(!!draft.storyLineBridge.enabled)
-        .onChange((value) => {
-          draft.storyLineBridge.enabled = value;
-        }));
-
-    new Setting(containerEl)
+    const storyLineSection = this.createSettingsSection(containerEl, {
+      title: "StoryLine",
+      description: "Scene routing, manuscript integration, and Codex link colors",
+      icon: "library",
+      accent: "#f59e0b"
+    });
+    this.attachSectionUndo(storyLineSection, draft, "storyLineBridge", "StoryLine");
+    new Setting(storyLineSection)
       .setName("StoryLine root folder")
       .setDesc("The vault folder containing StoryLine projects.")
       .addText((text) => text
@@ -6577,155 +6876,328 @@ class NovelerSettingTab extends PluginSettingTab {
         .onChange((value) => {
           draft.storyLineBridge.storyLineRoot = normalizeVaultPath(value) || "StoryLine";
         }));
-
-    new Setting(containerEl)
-      .setName("Replace StoryLine scene opens")
-      .setDesc("Open StoryLine scenes in Noveler instead of Obsidian's Markdown editor.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.storyLineBridge.replaceStoryLineSceneOpens !== false)
+    const routingGrid = storyLineSection.createDiv({ cls: "noveler-settings-grid" });
+    new Setting(routingGrid)
+      .setName("Open scenes in Noveler")
+      .setDesc("Replace Obsidian's Markdown editor for StoryLine scenes.")
+      .addToggle((toggle) => toggle.setValue(draft.storyLineBridge.replaceStoryLineSceneOpens !== false).onChange((value) => {
+        draft.storyLineBridge.replaceStoryLineSceneOpens = value;
+      }));
+    new Setting(routingGrid)
+      .setName("Use Noveler in Manuscript")
+      .setDesc("Embed Noveler in StoryLine's Manuscript tab.")
+      .addToggle((toggle) => toggle.setValue(draft.storyLineBridge.replaceManuscriptView !== false).onChange((value) => {
+        draft.storyLineBridge.replaceManuscriptView = value;
+      }));
+    const linkColorGrid = storyLineSection.createDiv({ cls: "noveler-link-color-grid" });
+    for (const [kind, label, icon] of [
+      ["character", "Characters", "users"],
+      ["location", "Locations", "map-pin"],
+      ["item", "Items", "package"]
+    ]) {
+      const colorSetting = new Setting(linkColorGrid).setName(label).setDesc("Visual link color");
+      const iconEl = colorSetting.nameEl.createSpan({ cls: `noveler-link-color-icon is-${kind}` });
+      setIcon(iconEl, icon);
+      iconEl.style.color = normalizeHexColor(draft.storyLineBridge.visualLinkColors[kind]);
+      colorSetting.addColorPicker((picker) => picker
+        .setValue(normalizeHexColor(draft.storyLineBridge.visualLinkColors[kind]))
         .onChange((value) => {
-          draft.storyLineBridge.replaceStoryLineSceneOpens = value;
+          draft.storyLineBridge.visualLinkColors[kind] = normalizeHexColor(value);
+          iconEl.style.color = draft.storyLineBridge.visualLinkColors[kind];
         }));
-
-    new Setting(containerEl)
-      .setName("Replace StoryLine Manuscript tab")
-      .setDesc("Display Noveler in StoryLine's Manuscript view for the selected scene.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.storyLineBridge.replaceManuscriptView !== false)
-        .onChange((value) => {
-          draft.storyLineBridge.replaceManuscriptView = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Show EPUB export")
-      .setDesc("Add ePub to StoryLine's export formats while the bridge is enabled.")
-      .addToggle((toggle) => toggle
-        .setValue(draft.storyLineBridge.enableEpubExport !== false)
-        .onChange((value) => {
-          draft.storyLineBridge.enableEpubExport = value;
-        }));
-
-    const addStoryLineLinkSetting = (name, kind) => {
-      new Setting(containerEl)
-        .setName(`${name} links`)
-        .setDesc(`Control the visibility and color of visual-only ${name.toLowerCase()} links.`)
-        .addToggle((toggle) => toggle
-          .setValue(draft.storyLineBridge.visualLinkCategories[kind] !== false)
-          .onChange((value) => {
-            draft.storyLineBridge.visualLinkCategories[kind] = value;
-            draft.storyLineBridge.visualLinks = Object.values(draft.storyLineBridge.visualLinkCategories).some((enabled) => enabled !== false);
-          }))
-        .addColorPicker((picker) => picker
-          .setValue(normalizeHexColor(draft.storyLineBridge.visualLinkColors[kind]))
-          .onChange((value) => {
-            draft.storyLineBridge.visualLinkColors[kind] = normalizeHexColor(value);
-          }));
-    };
-    addStoryLineLinkSetting("Character", "character");
-    addStoryLineLinkSetting("Location", "location");
-    addStoryLineLinkSetting("Item", "item");
-
-    new Setting(containerEl)
-      .setName("Antidote Connect")
-      .setDesc("Allow Noveler to send the active manuscript to Antidote Connectix.")
-      .addToggle((toggle) => toggle
-        .setValue(!!(draft.integrations && draft.integrations.antidoteConnect))
-        .onChange((value) => {
-          if (!draft.integrations || typeof draft.integrations !== "object") {
-            draft.integrations = {};
-          }
-          draft.integrations.antidoteConnect = value;
-        }));
-
-    new Setting(containerEl)
-      .setName("Keep Antidote focus")
-      .setDesc("Scroll Noveler to Antidote's selected correction, including when it is on another visual page.")
-      .addToggle((toggle) => toggle
-        .setValue(!(draft.integrations && draft.integrations.antidoteKeepFocus === false))
-        .onChange((value) => {
-          if (!draft.integrations || typeof draft.integrations !== "object") {
-            draft.integrations = {};
-          }
-          draft.integrations.antidoteKeepFocus = value;
-        }));
-
-    new Setting(containerEl)
-      .addButton((button) => button
-        .setButtonText("Save settings")
-        .setCta()
-        .onClick(saveDraft));
-  }
-
-  addHeadingStyleSetting(containerEl, draft, level) {
-    const key = `h${level}`;
-    if (!draft.headingStyles[key] || typeof draft.headingStyles[key] !== "object") {
-      draft.headingStyles[key] = clone(DEFAULT_SETTINGS.headingStyles[key]);
     }
-    const style = draft.headingStyles[key];
-    const defaultStyle = DEFAULT_SETTINGS.headingStyles[key];
 
-    new Setting(containerEl)
-      .setName(`Heading ${level}`)
-      .setDesc("Font / size / weight / style / alignment")
+    const exportSection = this.createSettingsSection(containerEl, {
+      title: "Export",
+      description: "Metadata used by StoryLine manuscript exports",
+      icon: "file-output",
+      accent: "#06b6d4"
+    });
+    this.attachSectionUndo(exportSection, draft, "export", "Export");
+    const exportGrid = exportSection.createDiv({ cls: "noveler-settings-grid" });
+    new Setting(exportGrid)
+      .setName("EPUB language")
+      .setDesc("The publication language stored in EPUB metadata and document markup.")
       .addDropdown((dropdown) => {
-        for (const [value, label] of this.getSettingsFontOptions(style.fontFamily)) {
+        const currentLanguage = normalizeEpubLanguage(draft.export.epubLanguage);
+        for (const [value, label] of EPUB_LANGUAGE_OPTIONS) {
           dropdown.addOption(value, label);
         }
-        dropdown
-          .setValue(style.fontFamily || "body")
-          .onChange((value) => {
-            style.fontFamily = value || "body";
-          });
-      })
-      .addText((text) => {
-        const update = (value) => {
-          const size = Number(value);
-          if (Number.isFinite(size)) {
-            style.fontSize = Math.max(6, Math.min(96, Math.round(size * 100) / 100));
+        if (!EPUB_LANGUAGE_OPTIONS.some(([value]) => value === currentLanguage)) {
+          dropdown.addOption(currentLanguage, currentLanguage.toUpperCase());
+        }
+        dropdown.setValue(currentLanguage).onChange((value) => {
+          draft.export.epubLanguage = normalizeEpubLanguage(value);
+        });
+      });
+
+    const saveBar = containerEl.createDiv({ cls: "noveler-settings-save-bar" });
+    const saveCopy = saveBar.createDiv();
+    const saveState = saveCopy.createEl("strong");
+    saveCopy.createEl("span", { text: `Saved in ${this.plugin.getSettingsFilePath()}` });
+    const saveButton = saveBar.createEl("button", { cls: "mod-cta", text: "Save settings" });
+    const updateSaveState = () => {
+      const dirty = this.hasUnsavedChanges(draft);
+      saveButton.disabled = !dirty;
+      saveButton.toggleClass("is-disabled", !dirty);
+      saveState.setText(dirty ? "Unsaved settings" : "No unsaved changes");
+    };
+    const scheduleSaveStateUpdate = () => window.setTimeout(updateSaveState, 0);
+    containerEl.addEventListener("input", scheduleSaveStateUpdate);
+    containerEl.addEventListener("change", scheduleSaveStateUpdate);
+    saveButton.addEventListener("click", async () => {
+      if (saveButton.disabled) {
+        return;
+      }
+      this.enforceRequiredIntegrations(draft);
+      draft.typography = clone(this.plugin.globalTypography || draft.typography || DEFAULT_SETTINGS.typography);
+      const previousSettings = this.plugin.settings;
+      const previousTypography = this.plugin.globalTypography;
+      const candidateSettings = mergeSettings(draft);
+      saveButton.disabled = true;
+      saveButton.addClass("is-disabled");
+      saveButton.setText("Saving...");
+      try {
+        this.plugin.settings = candidateSettings;
+        this.plugin.globalTypography = clone(candidateSettings.typography);
+        await this.plugin.saveSettings();
+        this.draftSettings = null;
+        new Notice(`Noveler settings saved to ${this.plugin.getSettingsFilePath()}.`);
+        this.display();
+      } catch (error) {
+        this.plugin.settings = previousSettings;
+        this.plugin.globalTypography = previousTypography;
+        console.error("Noveler could not save settings.", error);
+        new Notice(`Noveler settings were not saved: ${error.message || String(error)}`);
+        saveButton.setText("Save settings");
+        updateSaveState();
+      }
+    });
+    updateSaveState();
+  }
+
+  enforceRequiredIntegrations(settings) {
+    settings.integrations = settings.integrations && typeof settings.integrations === "object" ? settings.integrations : {};
+    settings.integrations.antidoteConnect = true;
+    settings.integrations.antidoteKeepFocus = true;
+    settings.storyLineBridge = settings.storyLineBridge && typeof settings.storyLineBridge === "object"
+      ? settings.storyLineBridge
+      : clone(DEFAULT_SETTINGS.storyLineBridge);
+    settings.storyLineBridge.enabled = true;
+    settings.storyLineBridge.enableEpubExport = true;
+  }
+
+  createSettingsSection(parent, options) {
+    const section = parent.createEl("details", { cls: "noveler-settings-section" });
+    section.open = options.open === true;
+    section.style.setProperty("--noveler-settings-accent", options.accent || "var(--interactive-accent)");
+    const summary = section.createEl("summary");
+    const iconEl = summary.createSpan({ cls: "noveler-settings-section-icon" });
+    setIcon(iconEl, options.icon);
+    const copy = summary.createSpan({ cls: "noveler-settings-section-copy" });
+    copy.createEl("strong", { text: options.title });
+    copy.createEl("small", { text: options.description });
+    const undoButton = summary.createEl("button", {
+      cls: "noveler-settings-section-undo",
+      attr: { "aria-label": `Undo ${options.title} changes`, type: "button" }
+    });
+    setIcon(undoButton, "undo-2");
+    const chevron = summary.createSpan({ cls: "noveler-settings-section-chevron" });
+    setIcon(chevron, "chevron-down");
+    const body = section.createDiv({ cls: "noveler-settings-section-body" });
+    body.novelerUndoButton = undoButton;
+    return body;
+  }
+
+  attachSectionUndo(body, draft, key, label) {
+    const button = body && body.novelerUndoButton;
+    if (!button) {
+      return;
+    }
+    const getSavedValue = () => clone(mergeSettings(this.plugin.settings)[key]);
+    const update = () => {
+      const changed = JSON.stringify(draft[key]) !== JSON.stringify(getSavedValue());
+      button.toggleClass("is-visible", changed);
+      button.setAttribute("aria-hidden", changed ? "false" : "true");
+      button.tabIndex = changed ? 0 : -1;
+    };
+    const scheduleUpdate = () => window.setTimeout(update, 0);
+    body.addEventListener("input", scheduleUpdate);
+    body.addEventListener("change", scheduleUpdate);
+    button.addEventListener("pointerdown", (event) => event.stopPropagation());
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      draft[key] = getSavedValue();
+      new Notice(`${label} changes undone.`);
+      this.display();
+    });
+    update();
+  }
+
+  addPluginStatusCard(parent, pluginIds, name, icon, manifestNames = []) {
+    const plugins = this.app.plugins;
+    const ids = Array.isArray(pluginIds) ? pluginIds : [pluginIds];
+    const expectedNames = [name, ...manifestNames].map((value) => String(value || "").trim().toLowerCase());
+    const manifests = plugins && plugins.manifests ? plugins.manifests : {};
+    const manifestEntry = Object.entries(manifests).find(([id, manifest]) => (
+      ids.includes(id)
+      || ids.includes(manifest && manifest.id)
+      || expectedNames.includes(String(manifest && manifest.name || "").trim().toLowerCase())
+    ));
+    const detectedId = manifestEntry
+      ? manifestEntry[0]
+      : ids.find((id) => plugins && plugins.plugins && plugins.plugins[id]) || ids[0];
+    const installed = !!(manifestEntry || (plugins && plugins.plugins && plugins.plugins[detectedId]));
+    const enabled = installed && !!(plugins && (
+      (plugins.enabledPlugins && typeof plugins.enabledPlugins.has === "function" && plugins.enabledPlugins.has(detectedId))
+      || (plugins.plugins && plugins.plugins[detectedId])
+    ));
+    const state = enabled ? "enabled" : installed ? "disabled" : "missing";
+    const card = parent.createDiv({ cls: `noveler-integration-card is-${state}` });
+    const iconEl = card.createDiv({ cls: "noveler-integration-card-icon" });
+    setIcon(iconEl, icon);
+    const copy = card.createDiv({ cls: "noveler-integration-card-copy" });
+    copy.createEl("strong", { text: name });
+    const status = copy.createEl("span");
+    status.createSpan({ cls: "noveler-integration-dot" });
+    status.appendText(enabled ? "Enabled" : installed ? "Installed, disabled" : "Not installed");
+    if (!installed) {
+      const button = card.createEl("button", { text: "Get plugin" });
+      button.addEventListener("click", () => window.open(`obsidian://show-plugin?id=${encodeURIComponent(ids[0])}`));
+    } else if (!enabled) {
+      const button = card.createEl("button", { text: "Enable" });
+      button.addEventListener("click", async () => {
+        try {
+          if (typeof plugins.enablePluginAndSave === "function") {
+            await plugins.enablePluginAndSave(detectedId);
+          } else if (typeof plugins.enablePlugin === "function") {
+            await plugins.enablePlugin(detectedId);
           }
-        };
-        text
-          .setPlaceholder("Size")
-          .setValue(String(style.fontSize || defaultStyle.fontSize))
-          .onChange(update);
-        text.inputEl.type = "number";
-        text.inputEl.min = "6";
-        text.inputEl.max = "96";
-        text.inputEl.step = "0.5";
-        text.inputEl.addClass("noveler-heading-size-input");
-        text.inputEl.addEventListener("input", () => update(text.inputEl.value));
-      })
-      .addDropdown((dropdown) => dropdown
-        .addOption("300", "Light")
-        .addOption("400", "Regular")
-        .addOption("500", "Medium")
-        .addOption("600", "Semi-bold")
-        .addOption("700", "Bold")
-        .addOption("800", "Heavy")
-        .setValue(String(style.fontWeight || defaultStyle.fontWeight))
-        .onChange((value) => {
-          style.fontWeight = value;
-        }))
-      .addDropdown((dropdown) => dropdown
-        .addOption("normal", "Normal")
-        .addOption("italic", "Italic")
-        .setValue(style.italic ? "italic" : "normal")
-        .onChange((value) => {
-          style.italic = value === "italic";
-        }))
-      .addDropdown((dropdown) => dropdown
-        .addOption("left", "Left")
-        .addOption("center", "Center")
-        .addOption("right", "Right")
-        .addOption("justify", "Justify")
-        .setValue(style.alignment || defaultStyle.alignment)
-        .onChange((value) => {
-          style.alignment = value;
-        }));
+          this.display();
+        } catch (_error) {
+          new Notice(`${name} could not be enabled automatically.`);
+        }
+      });
+    }
+  }
+
+  addMarginEditor(parent, draft) {
+    const units = draft.layout.rulerUnits === "metric" ? "metric" : "imperial";
+    const unitLabel = units === "metric" ? "cm" : "in";
+    const wrapper = parent.createDiv({ cls: "noveler-margin-editor" });
+    const copy = wrapper.createDiv({ cls: "noveler-margin-editor-copy" });
+    copy.createEl("strong", { text: "Page margins" });
+    copy.createEl("span", { text: `Set the printable area in ${unitLabel}.` });
+    const layout = wrapper.createDiv({ cls: "noveler-margin-layout" });
+    const positions = [
+      ["Top", "marginTop", "is-top"],
+      ["Left", "marginLeft", "is-left"],
+      ["Right", "marginRight", "is-right"],
+      ["Bottom", "marginBottom", "is-bottom"]
+    ];
+    for (const [label, key, className] of positions) {
+      const field = layout.createEl("label", { cls: `noveler-margin-field ${className}` });
+      field.createSpan({ text: label });
+      const control = field.createSpan({ cls: "noveler-margin-control" });
+      const input = control.createEl("input", { type: "number" });
+      input.min = "0.1";
+      input.step = units === "metric" ? "0.1" : "0.05";
+      input.value = String(pxToUnitValue(draft.layout[key], units));
+      control.createSpan({ text: unitLabel });
+      input.addEventListener("input", () => {
+        const px = unitValueToPx(input.value, units);
+        if (px > 0) {
+          draft.layout[key] = px;
+        }
+      });
+    }
+    const page = layout.createDiv({ cls: "noveler-margin-page-preview" });
+    page.createDiv({ cls: "noveler-margin-page-content" });
+  }
+
+  addModernHeadingStyle(parent, draft, level) {
+    const key = `h${level}`;
+    draft.headingStyles[key] = draft.headingStyles[key] && typeof draft.headingStyles[key] === "object"
+      ? draft.headingStyles[key]
+      : clone(DEFAULT_SETTINGS.headingStyles[key]);
+    const style = draft.headingStyles[key];
+    const defaults = DEFAULT_SETTINGS.headingStyles[key];
+    if (!style.fontFamily || style.fontFamily === "body") {
+      style.fontFamily = "Georgia";
+    }
+    const card = parent.createEl("details", { cls: "noveler-heading-style-card" });
+    const summary = card.createEl("summary");
+    summary.createSpan({ cls: "noveler-heading-level", text: `H${level}` });
+    const preview = summary.createSpan({ cls: "noveler-heading-preview", text: `Heading ${level}` });
+    const chevron = summary.createSpan({ cls: "noveler-heading-chevron" });
+    setIcon(chevron, "chevron-down");
+    const controls = card.createDiv({ cls: "noveler-heading-controls" });
+    const refreshPreview = () => {
+      preview.style.fontFamily = style.fontFamily || "Georgia";
+      preview.style.fontSize = `${Math.max(12, Math.min(24, Number(style.fontSize) || defaults.fontSize))}px`;
+      preview.style.fontWeight = String(style.fontWeight || defaults.fontWeight);
+      preview.style.fontStyle = style.italic ? "italic" : "normal";
+      preview.style.textAlign = style.alignment || defaults.alignment;
+    };
+    const addField = (labelText) => {
+      const label = controls.createEl("label");
+      label.createSpan({ text: labelText });
+      return label;
+    };
+    const font = addField("Font").createEl("select");
+    for (const [value, label] of this.getSettingsFontOptions(style.fontFamily)) {
+      font.createEl("option", { value, text: label });
+    }
+    font.value = style.fontFamily || "Georgia";
+    font.addEventListener("change", () => {
+      style.fontFamily = font.value || "Georgia";
+      refreshPreview();
+    });
+    const size = addField("Size").createEl("input", { type: "number" });
+    size.min = "6";
+    size.max = "96";
+    size.step = "0.5";
+    size.value = String(style.fontSize || defaults.fontSize);
+    size.addEventListener("input", () => {
+      const value = Number(size.value);
+      if (Number.isFinite(value)) {
+        style.fontSize = Math.max(6, Math.min(96, value));
+        refreshPreview();
+      }
+    });
+    const weight = addField("Weight").createEl("select");
+    for (const [value, label] of [["300", "Light"], ["400", "Regular"], ["500", "Medium"], ["600", "Semi-bold"], ["700", "Bold"], ["800", "Heavy"]]) {
+      weight.createEl("option", { value, text: label });
+    }
+    weight.value = String(style.fontWeight || defaults.fontWeight);
+    weight.addEventListener("change", () => {
+      style.fontWeight = weight.value;
+      refreshPreview();
+    });
+    const alignment = addField("Alignment").createEl("select");
+    for (const value of ["left", "center", "right", "justify"]) {
+      alignment.createEl("option", { value, text: value.charAt(0).toUpperCase() + value.slice(1) });
+    }
+    alignment.value = style.alignment || defaults.alignment;
+    alignment.addEventListener("change", () => {
+      style.alignment = alignment.value;
+      refreshPreview();
+    });
+    const italicLabel = addField("Style");
+    const italicControl = italicLabel.createSpan({ cls: "noveler-heading-italic" });
+    const italic = italicControl.createEl("input", { type: "checkbox" });
+    italic.checked = !!style.italic;
+    italicControl.createSpan({ text: "Italic" });
+    italic.addEventListener("change", () => {
+      style.italic = italic.checked;
+      refreshPreview();
+    });
+    refreshPreview();
   }
 
   getSettingsFontOptions(currentFont) {
-    const fonts = new Map([["body", "Body font"]]);
+    const fonts = new Map();
     const addFont = (font) => {
       const family = String(font || "").trim();
       if (family && family !== "body" && !fonts.has(family)) {
@@ -6745,6 +7217,15 @@ class NovelerSettingTab extends PluginSettingTab {
       addFont(font);
     }
     return Array.from(fonts.entries());
+  }
+
+  hasUnsavedChanges(draft) {
+    const candidate = mergeSettings(clone(draft));
+    const saved = mergeSettings(clone(this.plugin.settings));
+    const typography = clone(this.plugin.globalTypography || this.plugin.settings.typography || DEFAULT_SETTINGS.typography);
+    candidate.typography = typography;
+    saved.typography = typography;
+    return JSON.stringify(candidate) !== JSON.stringify(saved);
   }
 }
 
@@ -6812,7 +7293,7 @@ const NOVELER_SCENE_TYPOGRAPHY_KEYS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  enabled: false,
+  enabled: true,
   storyLineRoot: "StoryLine",
   replaceStoryLineSceneOpens: true,
   replaceManuscriptView: true,
@@ -6842,6 +7323,11 @@ const DEFAULT_EXPORT_OPTIONS = {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeEpubLanguage(value) {
+  const language = String(value || "").trim().replace(/_/g, "-").toLowerCase();
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(language) ? language : "en";
 }
 
 function mergeSettings(stored) {
@@ -7434,6 +7920,8 @@ function htmlToBlocks(html, typography) {
           items: Array.from(element.children).filter((child) => child.tagName && child.tagName.toLowerCase() === "li").map((child) => nodeToInlineRuns(child)),
           typography
         });
+      } else if (tag === "div" && element.classList && element.classList.contains("noveler-page-break")) {
+        blocks.push({ type: "page-break", typography });
       } else if (tag === "div" && element.classList && element.classList.contains("noveler-scene-break")) {
         blocks.push({ type: "scene-break", runs: nodeToInlineRuns(element), typography });
       } else if (["div", "section", "article", "body"].includes(tag)) {
@@ -7553,6 +8041,9 @@ function blockToHtml(block) {
     const level = Math.min(6, Math.max(1, Number(block.level) || 1));
     return `<h${level} style="${styleAttr(headingCss(level, typography))}">${runsToHtml(block.runs)}</h${level}>`;
   }
+  if (block.type === "page-break") {
+    return '<div style="break-before:page;page-break-before:always;height:0"></div>';
+  }
   if (block.type === "hr") {
     return '<hr style="margin:2em 0;border:0;border-top:1px solid #888"/>';
   }
@@ -7571,7 +8062,7 @@ function blockToHtml(block) {
   return `<p style="${styleAttr(`${typographyCss(typography)};${paragraphCss(typography)}`)}">${runsToHtml(block.runs)}</p>`;
 }
 
-function buildHtmlDocument(title, bodyHtml, layout, typography, forEpub) {
+function buildHtmlDocument(title, bodyHtml, layout, typography, forEpub, language = "en") {
   const pageWidth = pxToCm(layout.pageWidth || NOVELER_DEFAULT_LAYOUT.pageWidth);
   const pageHeight = pxToCm(layout.pageHeight || NOVELER_DEFAULT_LAYOUT.pageHeight);
   const marginTop = pxToCm(layout.marginTop || NOVELER_DEFAULT_LAYOUT.marginTop);
@@ -7579,7 +8070,10 @@ function buildHtmlDocument(title, bodyHtml, layout, typography, forEpub) {
   const marginBottom = pxToCm(layout.marginBottom || NOVELER_DEFAULT_LAYOUT.marginBottom);
   const marginLeft = pxToCm(layout.marginLeft || NOVELER_DEFAULT_LAYOUT.marginLeft);
   const baseCss = typographyCss(typography);
-  const htmlAttrs = forEpub ? ' xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"' : ' lang="en"';
+  const documentLanguage = normalizeEpubLanguage(language);
+  const htmlAttrs = forEpub
+    ? ` xmlns="http://www.w3.org/1999/xhtml" xml:lang="${escapeHtml(documentLanguage)}" lang="${escapeHtml(documentLanguage)}"`
+    : ' lang="en"';
   const doctype = forEpub ? '<!DOCTYPE html>' : '<!DOCTYPE html>';
   const linkedCss = forEpub ? '  <link rel="stylesheet" type="text/css" href="../styles.css"/>\n' : "";
   return `${doctype}
@@ -7708,6 +8202,9 @@ function blockToDocxXml(block) {
     const level = Math.min(6, Math.max(1, Number(block.level) || 1));
     return `<w:p><w:pPr><w:pStyle w:val="Heading${level}"/>${paragraphPropertiesXml(typography, "heading")}</w:pPr>${runsToDocxXml(block.runs, typography)}</w:p>`;
   }
+  if (block.type === "page-break") {
+    return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  }
   if (block.type === "hr") {
     return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="888888"/></w:pBdr></w:pPr></w:p>';
   }
@@ -7755,16 +8252,17 @@ function createDocxPackage(title, blocks, layout, baseTypography) {
   ]);
 }
 
-function createEpubPackage(title, bodyHtml, layout, baseTypography) {
+function createEpubPackage(title, bodyHtml, layout, baseTypography, language) {
+  const epubLanguage = normalizeEpubLanguage(language);
   const identifier = `urn:uuid:${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-  const xhtml = buildHtmlDocument(title, bodyHtml, layout, baseTypography, true);
+  const xhtml = buildHtmlDocument(title, bodyHtml, layout, baseTypography, true, epubLanguage);
   const css = `body { ${typographyCss(baseTypography)}; } p { margin-top: 0; margin-bottom: 0; }`;
   const opf = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">${escapeXml(identifier)}</dc:identifier>
     <dc:title>${escapeXml(title)}</dc:title>
-    <dc:language>en</dc:language>
+    <dc:language>${escapeXml(epubLanguage)}</dc:language>
     <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}</meta>
   </metadata>
   <manifest>
@@ -7777,7 +8275,7 @@ function createEpubPackage(title, bodyHtml, layout, baseTypography) {
   </spine>
 </package>`;
   const nav = `<?xml version="1.0" encoding="UTF-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${escapeHtml(epubLanguage)}" lang="${escapeHtml(epubLanguage)}">
 <head><title>${escapeHtml(title)}</title></head>
 <body><nav epub:type="toc" xmlns:epub="http://www.idpf.org/2007/ops"><h1>${escapeHtml(title)}</h1><ol><li><a href="text/manuscript.xhtml">Manuscript</a></li></ol></nav></body>
 </html>`;
@@ -8213,6 +8711,11 @@ class NovelerStoryLineBridgePlugin {
     return Object.assign(clone(NOVELER_DEFAULT_LAYOUT), settings && settings.layout ? settings.layout : {});
   }
 
+  getEpubLanguage() {
+    const settings = this.getNovelerSettings();
+    return normalizeEpubLanguage(settings && settings.export && settings.export.epubLanguage);
+  }
+
   getNovelerBaseTypography() {
     const noveler = this.getNovelerPlugin();
     const settings = this.getNovelerSettings();
@@ -8369,7 +8872,7 @@ class NovelerStoryLineBridgePlugin {
       throw new Error(`Unsupported export format: ${format}`);
     }
     if (!this.isEnabled()) {
-      new Notice("Enable the Noveler StoryLine bridge before exporting with Noveler formatting.");
+      new Notice("StoryLine is not available. Install and enable StoryLine, then try the export again.");
       return "";
     }
     if (!this.getNovelerSettings()) {
@@ -8397,7 +8900,7 @@ class NovelerStoryLineBridgePlugin {
     let bytes;
     let extension = normalizedFormat;
     if (normalizedFormat === "epub") {
-      bytes = createEpubPackage(title, model.bodyHtml, layout, model.baseTypography);
+      bytes = createEpubPackage(title, model.bodyHtml, layout, model.baseTypography, this.getEpubLanguage());
     } else if (normalizedFormat === "docx") {
       bytes = createDocxPackage(title, model.blocks, layout, model.baseTypography);
     } else {
@@ -8603,6 +9106,13 @@ class NovelerStoryLineBridgePlugin {
     this.originalOpenLinkText = originalOpenLinkText;
     workspace.__novelerStoryLineBridgeOpenLinkTextPatched = true;
     this.openLinkTextWrapper = async (linktext, sourcePath, newLeaf, openState) => {
+      const noveler = typeof window !== "undefined" ? window.Noveler : null;
+      if (noveler && typeof noveler.isAnnotationLink === "function" && noveler.isAnnotationLink(linktext)) {
+        const handled = await noveler.openAnnotationLink(linktext, sourcePath);
+        if (handled) {
+          return;
+        }
+      }
       const scenePath = this.resolveLinkTextToScenePath(linktext, sourcePath);
       if (scenePath && this.isEnabled() && this.settings.replaceStoryLineSceneOpens) {
         await this.openSceneInNoveler(scenePath, {
@@ -8969,7 +9479,7 @@ class NovelerStoryLineBridgePlugin {
 
     const noveler = this.getNovelerApi();
     if (!noveler && !(options.targetLeaf && options.replaceLeaf)) {
-      new Notice("Enable Noveler before using the StoryLine bridge.");
+      new Notice("Noveler is not available for this StoryLine scene.");
       return;
     }
 
@@ -8977,6 +9487,18 @@ class NovelerStoryLineBridgePlugin {
       path: scenePath,
       source: options.source || "storyline"
     };
+
+    if (noveler && typeof noveler.openScene === "function") {
+      await noveler.openScene(scenePath, Object.assign({}, options, state));
+      return;
+    }
+
+    const existingLeaf = this.app.workspace.getLeavesOfType(NOVELER_VIEW_TYPE)[0];
+    if (existingLeaf) {
+      await existingLeaf.setViewState({ type: NOVELER_VIEW_TYPE, active: true, state });
+      this.app.workspace.revealLeaf(existingLeaf);
+      return;
+    }
 
     if (options.targetLeaf && options.replaceLeaf) {
       try {
@@ -8992,11 +9514,6 @@ class NovelerStoryLineBridgePlugin {
       }
     }
 
-    if (noveler && typeof noveler.openScene === "function") {
-      await noveler.openScene(scenePath, state);
-      return;
-    }
-
     try {
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({
@@ -9007,7 +9524,7 @@ class NovelerStoryLineBridgePlugin {
       this.app.workspace.revealLeaf(leaf);
     } catch (error) {
       console.error("[Noveler StoryLine Bridge] Could not open Noveler.", error);
-      new Notice("Enable Noveler before using the StoryLine bridge.");
+      new Notice("Noveler is not available for this StoryLine scene.");
     }
   }
 }
@@ -9024,7 +9541,7 @@ const path = require("path");
 
 const NOVELER_VIEW_TYPE = "noveler-manuscript-writer";
 const NOTICE_CONNECT_FAILED = "Unable to communicate with Connectix Agent (Antidote).";
-const NOTICE_ENABLE_NOVELER = "Enable Antidote Connect in Noveler settings, then open a Noveler document.";
+const NOTICE_ENABLE_NOVELER = "Open a document in Noveler before using Antidote Connect.";
 
 class AntidoteTextZone {
   constructor(text, selectionStart, selectionEnd, id) {
@@ -9566,7 +10083,7 @@ const StoryLineBridgePlugin = require("./storyline-bridge");
 const AntidoteBridgePlugin = require("./antidote-bridge");
 
 const STORYLINE_DEFAULTS = {
-  enabled: false,
+  enabled: true,
   storyLineRoot: "StoryLine",
   replaceStoryLineSceneOpens: true,
   replaceManuscriptView: true,
@@ -9593,6 +10110,7 @@ class NovelerStoryLineExpansionPlugin extends NovelerPlugin {
     await super.onload();
     this.ensureStoryLineSettings();
     await this.migrateLegacyStoryLineSettings();
+    this.ensureStoryLineSettings();
 
     this.storyLineBridgeModule = this.createInternalModule(StoryLineBridgePlugin);
     this.storyLineBridgeModule.loadData = async () => clone(this.settings.storyLineBridge);
@@ -9615,6 +10133,12 @@ class NovelerStoryLineExpansionPlugin extends NovelerPlugin {
       clone(STORYLINE_DEFAULTS),
       this.settings.storyLineBridge || {}
     );
+    this.settings.storyLineBridge.enabled = true;
+    this.settings.storyLineBridge.enableEpubExport = true;
+    this.settings.integrations = Object.assign({}, this.settings.integrations, {
+      antidoteConnect: true,
+      antidoteKeepFocus: true
+    });
   }
 
   async migrateLegacyStoryLineSettings() {
