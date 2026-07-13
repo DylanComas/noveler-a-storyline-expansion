@@ -132,7 +132,7 @@ const SCENE_TYPOGRAPHY_KEYS = [
 
 const BRIDGE_EMPTY_HTML = [
   "<p><strong>Select a StoryLine scene to edit.</strong></p>",
-  "<p>Bridge mode only opens Markdown scene files under the configured StoryLine root with a Scenes/Act folder path.</p>"
+  "<p>Bridge mode only opens Markdown scene files inside a project's Scenes folder.</p>"
 ].join("");
 
 const CM_TO_PX = 96 / 2.54;
@@ -8426,7 +8426,7 @@ class NovelerStoryLineBridgePlugin {
     }
 
     const relativeSceneParts = parts.slice(scenesIndex + 1);
-    return relativeSceneParts.length >= 2 && relativeSceneParts.every(Boolean);
+    return relativeSceneParts.length >= 1 && relativeSceneParts.every(Boolean);
   }
 
   registerExportCommands() {
@@ -9473,7 +9473,7 @@ class NovelerStoryLineBridgePlugin {
   async openSceneInNoveler(path, options = {}) {
     const scenePath = normalizeVaultPath(path || this.getActiveScenePath());
     if (scenePath && !this.isStoryLineScenePath(scenePath)) {
-      new Notice("Noveler bridge only opens Markdown files under the configured StoryLine root with a Scenes/Act folder path.");
+      new Notice("Noveler bridge only opens Markdown files inside a project's Scenes folder.");
       return;
     }
 

@@ -136,7 +136,7 @@ Bridge settings include:
 - Add ePub export support to StoryLine's export options.
 - Choose the publication language written into ePub metadata.
 
-When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. Noveler reuses one dedicated editor tab rather than opening duplicate Noveler tabs. The bridge only opens Markdown scene files under the configured StoryLine root with a valid StoryLine scene folder path.
+When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. Noveler reuses one dedicated editor tab rather than opening duplicate Noveler tabs. The bridge opens Markdown scene files directly inside a project's `Scenes` folder or in nested organization folders such as `Scenes/Act`.
 
 Noveler can display visual-only links for StoryLine Characters, Locations, and Items directly in manuscript text. Each category has its own configurable color and bottom-bar visibility toggle. Links recognize entry names and supported nickname or alias fields, including custom Item fields named `NICKNAME / ALIAS`. Clicking a link opens the corresponding StoryLine entry without adding link markup to the Markdown scene or its exports.
 
