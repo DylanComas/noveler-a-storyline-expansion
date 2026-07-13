@@ -35,9 +35,9 @@ const DEFAULT_SETTINGS = {
     highlightScope: "line"
   },
   typography: {
-    fontPreset: "serif",
-    customFontFamily: "",
-    fontSize: 18,
+    fontPreset: "custom",
+    customFontFamily: "Times New Roman",
+    fontSize: 12,
     textColor: "#000000",
     fontScale: 100,
     fontWeight: "400",
@@ -208,6 +208,17 @@ function normalizeEpubLanguage(value) {
 function mergeSettings(stored) {
   const result = clone(DEFAULT_SETTINGS);
   mergeInto(result, stored || {});
+  const storedTypography = stored && stored.typography;
+  if (
+    storedTypography
+    && storedTypography.fontPreset === "serif"
+    && !String(storedTypography.customFontFamily || "").trim()
+    && Number(storedTypography.fontSize) === 18
+  ) {
+    result.typography.fontPreset = "custom";
+    result.typography.customFontFamily = "Times New Roman";
+    result.typography.fontSize = 12;
+  }
   result.storyLineBridge.enabled = true;
   result.storyLineBridge.enableEpubExport = true;
   result.integrations.antidoteConnect = true;
@@ -6685,6 +6696,7 @@ class NovelerSettingTab extends PluginSettingTab {
     draft.headingStyles = draft.headingStyles && typeof draft.headingStyles === "object"
       ? draft.headingStyles
       : clone(DEFAULT_SETTINGS.headingStyles);
+    draft.typography = Object.assign(clone(DEFAULT_SETTINGS.typography), draft.typography || {});
     draft.focus = draft.focus && typeof draft.focus === "object" ? draft.focus : clone(DEFAULT_SETTINGS.focus);
     draft.integrations = draft.integrations && typeof draft.integrations === "object" ? draft.integrations : {};
     draft.export = draft.export && typeof draft.export === "object" ? draft.export : clone(DEFAULT_SETTINGS.export);
@@ -6706,12 +6718,12 @@ class NovelerSettingTab extends PluginSettingTab {
 
     const editorSection = this.createSettingsSection(containerEl, {
       title: "Editor",
-      description: "Page presentation and external plugin availability",
+      description: "Manuscript defaults, page presentation, and plugin availability",
       icon: "panel-top",
       accent: "#3b82f6",
       open: true
     });
-    this.attachSectionUndo(editorSection, draft, "layout", "Editor");
+    this.attachSectionUndo(editorSection, draft, ["layout", "typography"], "Editor");
     const integrationGrid = editorSection.createDiv({ cls: "noveler-integration-grid" });
     this.addPluginStatusCard(integrationGrid, ["storyline"], "StoryLine", "library");
     this.addPluginStatusCard(
@@ -6733,6 +6745,35 @@ class NovelerSettingTab extends PluginSettingTab {
         .onChange((value) => {
           draft.layout.mode = value === "focus" ? "focus" : "page";
         }));
+    new Setting(editorGrid)
+      .setName("Default manuscript font")
+      .setDesc("Font used when a scene has no saved typography.")
+      .addDropdown((dropdown) => {
+        const selectedFont = getSelectedFontFamily(draft.typography);
+        for (const [value, label] of this.getSettingsFontOptions(selectedFont)) {
+          dropdown.addOption(value, label);
+        }
+        dropdown.setValue(selectedFont).onChange((value) => {
+          draft.typography.fontPreset = "custom";
+          draft.typography.customFontFamily = value || DEFAULT_SETTINGS.typography.customFontFamily;
+        });
+      });
+    new Setting(editorGrid)
+      .setName("Default manuscript font size")
+      .setDesc("Point size used when a scene has no saved typography.")
+      .addText((text) => {
+        text.setValue(String(draft.typography.fontSize || DEFAULT_SETTINGS.typography.fontSize));
+        text.inputEl.type = "number";
+        text.inputEl.min = "6";
+        text.inputEl.max = "96";
+        text.inputEl.step = "0.5";
+        text.inputEl.addEventListener("input", () => {
+          const value = Number(text.inputEl.value);
+          if (Number.isFinite(value)) {
+            draft.typography.fontSize = Math.max(6, Math.min(96, value));
+          }
+        });
+      });
     new Setting(editorGrid)
       .setName("Measurement system")
       .setDesc("Used by rulers and margin controls.")
@@ -6957,7 +6998,6 @@ class NovelerSettingTab extends PluginSettingTab {
         return;
       }
       this.enforceRequiredIntegrations(draft);
-      draft.typography = clone(this.plugin.globalTypography || draft.typography || DEFAULT_SETTINGS.typography);
       const previousSettings = this.plugin.settings;
       const previousTypography = this.plugin.globalTypography;
       const candidateSettings = mergeSettings(draft);
@@ -7021,9 +7061,17 @@ class NovelerSettingTab extends PluginSettingTab {
     if (!button) {
       return;
     }
-    const getSavedValue = () => clone(mergeSettings(this.plugin.settings)[key]);
+    const keys = Array.isArray(key) ? key : [key];
+    const getSavedValue = (settingsKey) => {
+      if (settingsKey === "typography") {
+        return clone(this.plugin.globalTypography || this.plugin.settings.typography || DEFAULT_SETTINGS.typography);
+      }
+      return clone(mergeSettings(this.plugin.settings)[settingsKey]);
+    };
     const update = () => {
-      const changed = JSON.stringify(draft[key]) !== JSON.stringify(getSavedValue());
+      const changed = keys.some((settingsKey) => (
+        JSON.stringify(draft[settingsKey]) !== JSON.stringify(getSavedValue(settingsKey))
+      ));
       button.toggleClass("is-visible", changed);
       button.setAttribute("aria-hidden", changed ? "false" : "true");
       button.tabIndex = changed ? 0 : -1;
@@ -7035,7 +7083,9 @@ class NovelerSettingTab extends PluginSettingTab {
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      draft[key] = getSavedValue();
+      for (const settingsKey of keys) {
+        draft[settingsKey] = getSavedValue(settingsKey);
+      }
       new Notice(`${label} changes undone.`);
       this.display();
     });
@@ -7229,9 +7279,7 @@ class NovelerSettingTab extends PluginSettingTab {
   hasUnsavedChanges(draft) {
     const candidate = mergeSettings(clone(draft));
     const saved = mergeSettings(clone(this.plugin.settings));
-    const typography = clone(this.plugin.globalTypography || this.plugin.settings.typography || DEFAULT_SETTINGS.typography);
-    candidate.typography = typography;
-    saved.typography = typography;
+    saved.typography = clone(this.plugin.globalTypography || this.plugin.settings.typography || DEFAULT_SETTINGS.typography);
     return JSON.stringify(candidate) !== JSON.stringify(saved);
   }
 }
@@ -7260,9 +7308,9 @@ const NOVELER_DEFAULT_LAYOUT = {
 };
 
 const NOVELER_DEFAULT_TYPOGRAPHY = {
-  fontPreset: "serif",
-  customFontFamily: "",
-  fontSize: 18,
+  fontPreset: "custom",
+  customFontFamily: "Times New Roman",
+  fontSize: 12,
   fontScale: 100,
   fontWeight: "400",
   italic: false,
@@ -7513,10 +7561,10 @@ function resolveFontFamilyFromTypography(typography) {
 }
 
 function primaryFontName(fontFamily) {
-  return String(fontFamily || "Georgia")
+  return String(fontFamily || "Times New Roman")
     .split(",")[0]
     .replace(/['"]/g, "")
-    .trim() || "Georgia";
+    .trim() || "Times New Roman";
 }
 
 function paragraphCss(typography) {
