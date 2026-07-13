@@ -1090,7 +1090,28 @@
 }
 
 .noveler-settings select {
+  max-width: 100%;
+  min-width: 0;
   background-repeat: no-repeat !important;
+  text-overflow: ellipsis;
+}
+
+.noveler-editor-settings-grid > .setting-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 190px);
+  gap: 12px;
+}
+
+.noveler-editor-settings-grid > .setting-item > .setting-item-control {
+  width: 100%;
+  max-width: 190px;
+  justify-self: end;
+}
+
+.noveler-editor-settings-grid > .setting-item > .setting-item-control select,
+.noveler-editor-settings-grid > .setting-item > .setting-item-control input[type="text"],
+.noveler-editor-settings-grid > .setting-item > .setting-item-control input[type="number"] {
+  width: 100%;
 }
 
 .noveler-integration-grid {
@@ -1185,7 +1206,7 @@
     ". top ."
     "left page right"
     ". bottom .";
-  grid-template-columns: 78px 110px 78px;
+  grid-template-columns: 78px 170px 78px;
   align-items: center;
   justify-content: center;
   gap: 8px 12px;
@@ -1233,20 +1254,20 @@
 }
 
 .noveler-margin-page-preview {
-  display: grid;
-  width: 92px;
-  aspect-ratio: 0.72;
+  position: relative;
+  width: 160px;
   grid-area: page;
   place-self: center;
-  padding: 14px 12px;
   border: 1px solid var(--background-modifier-border-hover);
   background: var(--background-primary-alt);
   box-shadow: var(--shadow-s);
 }
 
 .noveler-margin-page-content {
+  position: absolute;
   border: 1px dashed var(--interactive-accent);
   opacity: 0.65;
+  pointer-events: none;
 }
 
 .noveler-heading-style-list {
@@ -1392,6 +1413,15 @@
 }
 
 @media (max-width: 520px) {
+  .noveler-editor-settings-grid > .setting-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .noveler-editor-settings-grid > .setting-item > .setting-item-control {
+    max-width: none;
+    justify-self: stretch;
+  }
+
   .noveler-margin-layout {
     grid-template-areas:
       "page page"

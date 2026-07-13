@@ -265,11 +265,7 @@ function unitValueToPx(value, units) {
 }
 
 function getPagePresetOptions() {
-  const options = Object.entries(PAGE_SIZE_PRESETS).map(([value, preset]) => {
-    const width = String(preset.widthCm).replace(".", ",");
-    const height = String(preset.heightCm).replace(".", ",");
-    return [value, `${preset.label} (${width} x ${height} cm)`];
-  });
+  const options = Object.entries(PAGE_SIZE_PRESETS).map(([value, preset]) => [value, preset.label]);
   options.push(["custom", "Custom"]);
   return options;
 }
@@ -6734,7 +6730,7 @@ class NovelerSettingTab extends PluginSettingTab {
       ["Antidote Grammar Checker Integration"]
     );
 
-    const editorGrid = editorSection.createDiv({ cls: "noveler-settings-grid" });
+    const editorGrid = editorSection.createDiv({ cls: "noveler-settings-grid noveler-editor-settings-grid" });
     new Setting(editorGrid)
       .setName("Opening mode")
       .setDesc("The layout used when Noveler opens.")
@@ -6744,6 +6740,17 @@ class NovelerSettingTab extends PluginSettingTab {
         .setValue(draft.layout.mode === "focus" ? "focus" : "page")
         .onChange((value) => {
           draft.layout.mode = value === "focus" ? "focus" : "page";
+        }));
+    new Setting(editorGrid)
+      .setName("Measurement system")
+      .setDesc("Used by rulers and margin controls.")
+      .addDropdown((dropdown) => dropdown
+        .addOption("imperial", "Imperial")
+        .addOption("metric", "Metric")
+        .setValue(draft.layout.rulerUnits === "metric" ? "metric" : "imperial")
+        .onChange((value) => {
+          draft.layout.rulerUnits = value === "metric" ? "metric" : "imperial";
+          this.display();
         }));
     new Setting(editorGrid)
       .setName("Default manuscript font")
@@ -6775,17 +6782,6 @@ class NovelerSettingTab extends PluginSettingTab {
         });
       });
     new Setting(editorGrid)
-      .setName("Measurement system")
-      .setDesc("Used by rulers and margin controls.")
-      .addDropdown((dropdown) => dropdown
-        .addOption("imperial", "Imperial")
-        .addOption("metric", "Metric")
-        .setValue(draft.layout.rulerUnits === "metric" ? "metric" : "imperial")
-        .onChange((value) => {
-          draft.layout.rulerUnits = value === "metric" ? "metric" : "imperial";
-          this.display();
-        }));
-    new Setting(editorGrid)
       .setName("Page format")
       .setDesc("Physical dimensions used in Page mode.")
       .addDropdown((dropdown) => {
@@ -6798,6 +6794,7 @@ class NovelerSettingTab extends PluginSettingTab {
             draft.layout.pageSize = value;
             draft.layout.pageWidth = cmToPx(preset.widthCm);
             draft.layout.pageHeight = cmToPx(preset.heightCm);
+            this.display();
           }
         });
       });
@@ -7147,6 +7144,18 @@ class NovelerSettingTab extends PluginSettingTab {
     copy.createEl("strong", { text: "Page margins" });
     copy.createEl("span", { text: `Set the printable area in ${unitLabel}.` });
     const layout = wrapper.createDiv({ cls: "noveler-margin-layout" });
+    const page = layout.createDiv({ cls: "noveler-margin-page-preview" });
+    const pageContent = page.createDiv({ cls: "noveler-margin-page-content" });
+    const updatePreview = () => {
+      const pageWidth = Math.max(1, Number(draft.layout.pageWidth) || DEFAULT_SETTINGS.layout.pageWidth);
+      const pageHeight = Math.max(1, Number(draft.layout.pageHeight) || DEFAULT_SETTINGS.layout.pageHeight);
+      const percentage = (value, dimension) => `${Math.max(0, Math.min(48, (Number(value) || 0) / dimension * 100))}%`;
+      page.style.aspectRatio = `${pageWidth} / ${pageHeight}`;
+      pageContent.style.top = percentage(draft.layout.marginTop, pageHeight);
+      pageContent.style.right = percentage(draft.layout.marginRight, pageWidth);
+      pageContent.style.bottom = percentage(draft.layout.marginBottom, pageHeight);
+      pageContent.style.left = percentage(draft.layout.marginLeft, pageWidth);
+    };
     const positions = [
       ["Top", "marginTop", "is-top"],
       ["Left", "marginLeft", "is-left"],
@@ -7166,11 +7175,11 @@ class NovelerSettingTab extends PluginSettingTab {
         const px = unitValueToPx(input.value, units);
         if (px > 0) {
           draft.layout[key] = px;
+          updatePreview();
         }
       });
     }
-    const page = layout.createDiv({ cls: "noveler-margin-page-preview" });
-    page.createDiv({ cls: "noveler-margin-page-content" });
+    updatePreview();
   }
 
   addModernHeadingStyle(parent, draft, level) {
