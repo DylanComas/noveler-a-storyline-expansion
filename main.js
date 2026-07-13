@@ -1244,6 +1244,15 @@ class NovelerLocalization {
     return LOCALE_FOLDER_NAME;
   }
 
+  get cacheDirectoryPath() {
+    const pluginDir = normalizeVaultPath(this.plugin.manifest && this.plugin.manifest.dir ? this.plugin.manifest.dir : "");
+    if (pluginDir) {
+      return `${pluginDir}/${LOCALE_FOLDER_NAME}`;
+    }
+    const configDir = normalizeVaultPath(this.plugin.app.vault.configDir || ".obsidian");
+    return `${configDir}/plugins/${this.plugin.manifest.id}/${LOCALE_FOLDER_NAME}`;
+  }
+
   get contentsApiUrl() {
     return `https://api.github.com/repos/${LOCALE_REPOSITORY}/contents/${this.directoryPath}?ref=${encodeURIComponent(LOCALE_REPOSITORY_BRANCH)}`;
   }
@@ -1287,10 +1296,89 @@ class NovelerLocalization {
 
   async initialize(requestedLocale) {
     await this.discoverLocales({ notify: false });
+    await this.syncRemoteCaches();
     await this.setLocale(requestedLocale, { refresh: false });
   }
 
+  getCachePath(locale) {
+    return `${this.cacheDirectoryPath}/${locale}.json`;
+  }
+
+  parseCatalog(parsed, locale, fallbackName) {
+    if (!parsed || typeof parsed.strings !== "object" || Array.isArray(parsed.strings)) {
+      throw new Error("The language file must contain a strings object.");
+    }
+    if (parsed.locale && parsed.locale !== locale) {
+      throw new Error(`The language file identifies itself as ${parsed.locale}, not ${locale}.`);
+    }
+    return {
+      locale,
+      name: typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : fallbackName,
+      strings: Object.fromEntries(Object.entries(parsed.strings).filter(([key, value]) => (
+        typeof key === "string" && typeof value === "string"
+      ))),
+      cacheSha: typeof parsed._novelerRemoteSha === "string" ? parsed._novelerRemoteSha : ""
+    };
+  }
+
+  async discoverCachedLocales() {
+    const adapter = this.plugin.app.vault.adapter;
+    if (!adapter || typeof adapter.exists !== "function" || typeof adapter.list !== "function") {
+      return [];
+    }
+    const discovered = [];
+    try {
+      if (!(await adapter.exists(this.cacheDirectoryPath))) {
+        return discovered;
+      }
+      const listing = await adapter.list(this.cacheDirectoryPath);
+      for (const path of listing.files || []) {
+        const match = String(path).replace(/\\/g, "/").match(/\/([a-z]{2,3}-[A-Z]{2})\.json$/);
+        if (!match || match[1] === DEFAULT_LOCALE) {
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(await adapter.read(path));
+          const catalog = this.parseCatalog(parsed, match[1], this.formatLocaleName(match[1]));
+          discovered.push({
+            locale: match[1],
+            name: catalog.name,
+            path: "",
+            sha: "",
+            cachePath: path,
+            cacheSha: catalog.cacheSha,
+            cached: true,
+            remote: false
+          });
+        } catch (error) {
+          console.warn(`Noveler ignored invalid cached language file ${path}.`, error);
+        }
+      }
+    } catch (error) {
+      console.warn("Noveler could not scan its cached language files.", error);
+    }
+    return discovered;
+  }
+
+  mergeCachedLocale(entry, cachedByLocale) {
+    const cached = cachedByLocale.get(entry.locale);
+    return {
+      ...entry,
+      cachePath: cached ? cached.cachePath : this.getCachePath(entry.locale),
+      cacheSha: cached ? cached.cacheSha : "",
+      cached: !!cached
+    };
+  }
+
+  updateLocaleFingerprint() {
+    this.localeFingerprint = this.locales.map((entry) => (
+      `${entry.locale}:${entry.name}:${entry.path}:${entry.sha}:${entry.cachePath || ""}:${entry.cacheSha || ""}`
+    )).join("|");
+  }
+
   async discoverLocales(options = {}) {
+    const cached = await this.discoverCachedLocales();
+    const cachedByLocale = new Map(cached.map((entry) => [entry.locale, entry]));
     try {
       const response = await requestUrl({
         url: this.contentsApiUrl,
@@ -1321,12 +1409,21 @@ class NovelerLocalization {
         })
         .filter(Boolean)
         .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.locale === entry.locale) === index)
+        .map((entry) => this.mergeCachedLocale(entry, cachedByLocale))
         .sort((left, right) => left.name.localeCompare(right.name));
       this.locales = [this.getEnglishLocaleEntry(), ...discovered];
-      this.localeFingerprint = this.locales.map((entry) => `${entry.locale}:${entry.name}:${entry.path}:${entry.sha}`).join("|");
+      this.updateLocaleFingerprint();
       this.discoveryErrorShown = false;
     } catch (error) {
       console.warn("Noveler could not refresh its language files.", error);
+      const previous = this.locales
+        .filter((entry) => entry.locale !== DEFAULT_LOCALE)
+        .map((entry) => this.mergeCachedLocale(entry, cachedByLocale));
+      const combined = [...cached, ...previous]
+        .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.locale === entry.locale) === index)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      this.locales = [this.getEnglishLocaleEntry(), ...combined];
+      this.updateLocaleFingerprint();
       if (options.notify && !this.discoveryErrorShown) {
         this.discoveryErrorShown = true;
         new Notice(this.translate("Noveler could not refresh its language files."));
@@ -1335,40 +1432,101 @@ class NovelerLocalization {
     return this.locales;
   }
 
+  async readCachedCatalog(locale, entry) {
+    const adapter = this.plugin.app.vault.adapter;
+    const path = entry && entry.cachePath ? entry.cachePath : this.getCachePath(locale);
+    if (!adapter || typeof adapter.exists !== "function" || !(await adapter.exists(path))) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(await adapter.read(path));
+      const catalog = this.parseCatalog(parsed, locale, entry ? entry.name : this.formatLocaleName(locale));
+      return {
+        strings: catalog.strings,
+        sha: catalog.cacheSha || (entry && entry.cacheSha) || "cached",
+        name: catalog.name,
+        fromCache: true
+      };
+    } catch (error) {
+      console.warn(`Noveler could not load cached language ${locale}.`, error);
+      return null;
+    }
+  }
+
+  async cacheCatalog(entry, catalog) {
+    const path = this.getCachePath(entry.locale);
+    try {
+      await this.plugin.ensureAdapterFolder(path);
+      await this.plugin.app.vault.adapter.write(path, `${JSON.stringify({
+        locale: entry.locale,
+        name: catalog.name,
+        _novelerRemoteSha: entry.sha,
+        strings: catalog.strings
+      }, null, 2)}\n`);
+      entry.cachePath = path;
+      entry.cacheSha = entry.sha;
+      entry.cached = true;
+      this.updateLocaleFingerprint();
+      return true;
+    } catch (error) {
+      console.warn(`Noveler could not cache language ${entry.locale}.`, error);
+      return false;
+    }
+  }
+
+  async downloadCatalog(entry) {
+    const response = await requestUrl({ url: this.getRemoteCatalogUrl(entry), method: "GET" });
+    if (!response || response.status < 200 || response.status >= 300) {
+      throw new Error(`GitHub returned HTTP ${response ? response.status : "unknown"}.`);
+    }
+    const parsed = response.json !== undefined ? response.json : JSON.parse(response.text || "{}");
+    const catalog = this.parseCatalog(parsed, entry.locale, entry.name);
+    entry.downloadFailed = false;
+    entry.name = catalog.name;
+    await this.cacheCatalog(entry, catalog);
+    return { strings: catalog.strings, sha: entry.sha, name: catalog.name, fromCache: false };
+  }
+
+  async syncRemoteCaches() {
+    for (const entry of this.locales) {
+      if (!entry.remote || !entry.sha || entry.cacheSha === entry.sha) {
+        continue;
+      }
+      try {
+        await this.downloadCatalog(entry);
+      } catch (error) {
+        entry.downloadFailed = true;
+        console.warn(`Noveler could not download language ${entry.locale} for offline use.`, error);
+      }
+    }
+  }
+
   async readCatalog(locale) {
     if (locale === DEFAULT_LOCALE) {
       return { strings: ENGLISH_LOCALE.strings, sha: "built-in", name: ENGLISH_LOCALE.name };
     }
     const entry = this.locales.find((candidate) => candidate.locale === locale);
-    if (!entry || !entry.remote) {
+    if (!entry) {
       return null;
     }
+    if (!entry.remote || entry.downloadFailed || (entry.sha && entry.cacheSha === entry.sha)) {
+      const cached = await this.readCachedCatalog(locale, entry);
+      if (cached) {
+        return cached;
+      }
+      if (entry.downloadFailed) {
+        new Notice(this.translate(`Noveler could not load language ${locale}; English is being used.`));
+        return null;
+      }
+    }
     try {
-      const response = await requestUrl({ url: this.getRemoteCatalogUrl(entry), method: "GET" });
-      if (!response || response.status < 200 || response.status >= 300) {
-        throw new Error(`GitHub returned HTTP ${response ? response.status : "unknown"}.`);
-      }
-      const parsed = response.json !== undefined ? response.json : JSON.parse(response.text || "{}");
-      if (!parsed || typeof parsed.strings !== "object" || Array.isArray(parsed.strings)) {
-        throw new Error("The language file must contain a strings object.");
-      }
-      if (parsed.locale && parsed.locale !== locale) {
-        throw new Error(`The language file identifies itself as ${parsed.locale}, not ${locale}.`);
-      }
-      const name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : entry.name;
-      entry.name = name;
-      this.localeFingerprint = this.locales.map((candidate) => (
-        `${candidate.locale}:${candidate.name}:${candidate.path}:${candidate.sha}`
-      )).join("|");
-      return {
-        strings: Object.fromEntries(Object.entries(parsed.strings).filter(([key, value]) => (
-          typeof key === "string" && typeof value === "string"
-        ))),
-        sha: entry.sha,
-        name
-      };
+      return await this.downloadCatalog(entry);
     } catch (error) {
       console.error(`Noveler could not load language ${locale}.`, error);
+      const cached = await this.readCachedCatalog(locale, entry);
+      if (cached) {
+        return cached;
+      }
       new Notice(this.translate(`Noveler could not load language ${locale}; English is being used.`));
       return null;
     }
@@ -1566,6 +1724,7 @@ class NovelerLocalization {
       const activeLocale = this.locale;
       const previousFingerprint = this.localeFingerprint;
       await this.discoverLocales({ notify: false });
+      await this.syncRemoteCaches();
       if (previousFingerprint !== this.localeFingerprint) {
         window.dispatchEvent(new CustomEvent("noveler-locales-changed", { detail: { locales: this.locales } }));
       }

@@ -211,7 +211,7 @@ English is embedded in `main.js`, so Noveler always has a complete offline inter
 }
 ```
 
-The language menu is beside the Noveler heading in Settings. Noveler queries the GitHub `.lang` directory to populate this menu automatically and excludes `en-US.json` because English is built in. Selecting another language downloads its current catalog from GitHub; an internet connection is therefore required when loading a non-English language. Added catalogs and updates to the active catalog are detected periodically, and labels, commands, menus, notices, editor controls, and integration UI update without reloading Obsidian.
+The language menu is beside the Noveler heading in Settings. Noveler queries the GitHub `.lang` directory to populate this menu automatically and excludes `en-US.json` because English is built in. Available non-English catalogs are downloaded into the installed plugin's `.lang` cache and updated when their GitHub files change. Previously downloaded languages therefore remain available without an internet connection. Added catalogs and updates to the active catalog are detected periodically, and labels, commands, menus, notices, editor controls, and integration UI update without reloading Obsidian.
 
 To add a translation, commit a valid `xx-XX.json` catalog to `.lang` on the repository's `main` branch. It will appear in installed copies automatically. Missing or unavailable translations fall back to the embedded English source text. Keep placeholders such as `{value}` and `{value2}` unchanged in translated values.
 
