@@ -11,7 +11,6 @@ const LEGACY_SETTINGS_FILE_PATH = SETTINGS_FILE_NAME;
 const SETTINGS_FILE_VERSION = 1;
 const ANNOTATION_LINK_MARKER = "#noveler-annotation-";
 const DEFAULT_LOCALE = "en-US";
-const LOCALE_FOLDER_NAME = ".lang";
 
 const DEFAULT_SETTINGS = {
   language: DEFAULT_LOCALE,
@@ -847,13 +846,13 @@ class NovelerLocalization {
     ].join(", ");
   }
 
-  get folderPath() {
+  get directoryPath() {
     const pluginDir = normalizeVaultPath(this.plugin.manifest && this.plugin.manifest.dir ? this.plugin.manifest.dir : "");
     if (pluginDir) {
-      return `${pluginDir}/${LOCALE_FOLDER_NAME}`;
+      return pluginDir;
     }
     const configDir = normalizeVaultPath(this.plugin.app.vault.configDir || ".obsidian");
-    return `${configDir}/plugins/${this.plugin.manifest.id}/${LOCALE_FOLDER_NAME}`;
+    return `${configDir}/plugins/${this.plugin.manifest.id}`;
   }
 
   normalizeLocale(value) {
@@ -871,8 +870,8 @@ class NovelerLocalization {
     const discovered = [];
     if (adapter && typeof adapter.exists === "function" && typeof adapter.list === "function") {
       try {
-        if (await adapter.exists(this.folderPath)) {
-          const listing = await adapter.list(this.folderPath);
+        if (await adapter.exists(this.directoryPath)) {
+          const listing = await adapter.list(this.directoryPath);
           for (const path of listing.files || []) {
             const match = String(path).replace(/\\/g, "/").match(/\/([a-z]{2,3}-[A-Z]{2})\.json$/);
             if (!match) {
@@ -983,7 +982,13 @@ class NovelerLocalization {
       if (!match) {
         continue;
       }
-      const values = Object.fromEntries(template.names.map((name, index) => [name, match[index + 1]]));
+      const values = Object.fromEntries(template.names.map((name, index) => {
+        const captured = match[index + 1];
+        const translated = Object.prototype.hasOwnProperty.call(this.catalog, captured)
+          ? this.catalog[captured]
+          : captured;
+        return [name, translated];
+      }));
       return template.translated.replace(/\{([a-zA-Z0-9_]+)\}/g, (token, name) => (
         Object.prototype.hasOwnProperty.call(values, name) ? values[name] : token
       ));

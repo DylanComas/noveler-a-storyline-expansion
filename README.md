@@ -199,7 +199,7 @@ The Antidote Grammar Checker Integration plugin and Antidote Connectix must be i
 
 ### Interface Language
 
-Noveler reads translations from the `.lang` folder inside the plugin directory. Language files use locale filenames such as `en-US.json` or `fr-FR.json` and this structure:
+Noveler reads translation files directly from the plugin directory. Language files use locale filenames such as `en-US.json` or `fr-FR.json` and this structure:
 
 ```json
 {
