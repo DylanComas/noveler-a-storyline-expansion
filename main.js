@@ -2,7 +2,7 @@
 const __novelerNativeRequire = require;
 const __novelerModules = {
 "./noveler": function(module, exports, require) {
-const { ItemView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml, stringifyYaml, setIcon } = require("obsidian");
+const { ItemView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml, requestUrl, stringifyYaml, setIcon } = require("obsidian");
 
 const VIEW_TYPE = "noveler-manuscript-writer";
 const DEFAULT_MANUSCRIPT = "<p><br></p>";
@@ -11,6 +11,400 @@ const LEGACY_SETTINGS_FILE_PATH = SETTINGS_FILE_NAME;
 const SETTINGS_FILE_VERSION = 1;
 const ANNOTATION_LINK_MARKER = "#noveler-annotation-";
 const DEFAULT_LOCALE = "en-US";
+const LOCALE_FOLDER_NAME = ".lang";
+const LOCALE_REPOSITORY = "DylanComas/noveler-a-storyline-expansion";
+const LOCALE_REPOSITORY_BRANCH = "main";
+const LOCALE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const ENGLISH_LOCALE = Object.freeze({
+  locale: "en-US",
+  name: "English (United States)",
+  strings: Object.freeze({
+    "{value} \"{value2}\" created in StoryLine.": "{value} \"{value2}\" created in StoryLine.",
+    "{value} changes undone.": "{value} changes undone.",
+    "{value} could not be enabled automatically.": "{value} could not be enabled automatically.",
+    "{value} name": "{value} name",
+    "{value} options": "{value} options",
+    "{value} words · {value2} chars": "{value} words · {value2} chars",
+    "0 words": "0 words",
+    "A4": "A4",
+    "Added \"{value}\" as an alias for \"{value2}\".": "Added \"{value}\" as an alias for \"{value2}\".",
+    "Align": "Align",
+    "Alignment": "Alignment",
+    "Annotated scene not found: {value}": "Annotated scene not found: {value}",
+    "Annotation": "Annotation",
+    "Annotation added to Scene Notes": "Annotation added to Scene Notes",
+    "Annotation added to StoryLine Scene Notes.": "Annotation added to StoryLine Scene Notes.",
+    "Annotations require an active StoryLine scene.": "Annotations require an active StoryLine scene.",
+    "Antidote": "Antidote",
+    "Antidote Grammar Checker Integration": "Antidote Grammar Checker Integration",
+    "Arabic": "Arabic",
+    "Arial": "Arial",
+    "Auto-capitalization": "Auto-capitalization",
+    "Block quote": "Block quote",
+    "Bold": "Bold",
+    "Bottom": "Bottom",
+    "Bottom margin {value}": "Bottom margin {value}",
+    "Bulleted list": "Bulleted list",
+    "Calibri": "Calibri",
+    "Cambria": "Cambria",
+    "Cancel": "Cancel",
+    "Candara": "Candara",
+    "Capitalize after sentence-ending punctuation.": "Capitalize after sentence-ending punctuation.",
+    "Carry paragraph styling into the next paragraph.": "Carry paragraph styling into the next paragraph.",
+    "Center": "Center",
+    "center": "center",
+    "Character": "Character",
+    "Character name": "Character name",
+    "Character options": "Character options",
+    "Character links": "Character links",
+    "Characters": "Characters",
+    "Chinese": "Chinese",
+    "Clipboard API unavailable": "Clipboard API unavailable",
+    "Close": "Close",
+    "Close text color": "Close text color",
+    "Code Character": "Code Character",
+    "Collapse repeated spaces in saved output.": "Collapse repeated spaces in saved output.",
+    "Consolas": "Consolas",
+    "Convert repeated hyphens into manuscript dashes.": "Convert repeated hyphens into manuscript dashes.",
+    "Convert straight quotes while typing.": "Convert straight quotes while typing.",
+    "Copy": "Copy",
+    "Could not create annotation: {value}": "Could not create annotation: {value}",
+    "Could not create StoryLine {value}: {value2}": "Could not create StoryLine {value}: {value2}",
+    "Could not open the annotated scene in Noveler.": "Could not open the annotated scene in Noveler.",
+    "Could not open the StoryLine entry.": "Could not open the StoryLine entry.",
+    "Could not update or open the StoryLine entry.": "Could not update or open the StoryLine entry.",
+    "Courier New": "Courier New",
+    "Create": "Create",
+    "Current line": "Current line",
+    "Current paragraph": "Current paragraph",
+    "Custom": "Custom",
+    "Cut": "Cut",
+    "Czech": "Czech",
+    "Danish": "Danish",
+    "Default magnification in Page mode.": "Default magnification in Page mode.",
+    "Default manuscript font": "Default manuscript font",
+    "Default manuscript font size": "Default manuscript font size",
+    "Default zoom": "Default zoom",
+    "Dialogue": "Dialogue",
+    "Dim surrounding text": "Dim surrounding text",
+    "Distraction-free writing behavior": "Distraction-free writing behavior",
+    "Double": "Double",
+    "Dutch": "Dutch",
+    "ePub (.epub)": "ePub (.epub)",
+    "Editing": "Editing",
+    "Editor": "Editor",
+    "Embed Noveler in StoryLine's Manuscript tab.": "Embed Noveler in StoryLine's Manuscript tab.",
+    "Emphasize the current visual line or paragraph.": "Emphasize the current visual line or paragraph.",
+    "Enable": "Enable",
+    "Enable Noveler before exporting with Noveler formatting.": "Enable Noveler before exporting with Noveler formatting.",
+    "Enable StoryLine before creating Codex entries.": "Enable StoryLine before creating Codex entries.",
+    "Enabled": "Enabled",
+    "English": "English",
+    "English (United States)": "English (United States)",
+    "EPUB language": "EPUB language",
+    "Export": "Export",
+    "Export failed: {value}": "Export failed: {value}",
+    "Exported {value}": "Exported {value}",
+    "Exported to {value}": "Exported to {value}",
+    "Exporting {value} with Noveler formatting...": "Exporting {value} with Noveler formatting...",
+    "Finnish": "Finnish",
+    "Focus": "Focus",
+    "Focus mode": "Focus mode",
+    "Focus target": "Focus target",
+    "Font": "Font",
+    "Font used when a scene has no saved typography.": "Font used when a scene has no saved typography.",
+    "French": "French",
+    "Garamond": "Garamond",
+    "Georgia": "Georgia",
+    "Georgia, Times New Roman, serif": "Georgia, Times New Roman, serif",
+    "German": "German",
+    "Get plugin": "Get plugin",
+    "H{value}": "H{value}",
+    "Header and footer size": "Header and footer size",
+    "Heading {value}": "Heading {value}",
+    "Heading 1": "Heading 1",
+    "Heading 2": "Heading 2",
+    "Heading 3": "Heading 3",
+    "Heading styles": "Heading styles",
+    "Heading${level}": "Heading${level}",
+    "Heading2": "Heading2",
+    "Heavy": "Heavy",
+    "Hex": "Hex",
+    "Hex text color": "Hex text color",
+    "Imperial": "Imperial",
+    "Imperial (inches)": "Imperial (inches)",
+    "Installed, disabled": "Installed, disabled",
+    "Inter, Segoe UI, Helvetica Neue, Arial, sans-serif": "Inter, Segoe UI, Helvetica Neue, Arial, sans-serif",
+    "Italian": "Italian",
+    "Italic": "Italic",
+    "Item": "Item",
+    "Item name": "Item name",
+    "Item options": "Item options",
+    "Item links": "Item links",
+    "Items": "Items",
+    "Japanese": "Japanese",
+    "JetBrains Mono, Consolas, SFMono-Regular, monospace": "JetBrains Mono, Consolas, SFMono-Regular, monospace",
+    "Justify": "Justify",
+    "justify": "justify",
+    "Keep the active writing position centered.": "Keep the active writing position centered.",
+    "Korean": "Korean",
+    "Language": "Language",
+    "Left": "Left",
+    "left": "left",
+    "Light": "Light",
+    "Left margin {value}": "Left margin {value}",
+    "Limit repeated blank paragraphs in saved output.": "Limit repeated blank paragraphs in saved output.",
+    "Line": "Line",
+    "Location": "Location",
+    "Location name": "Location name",
+    "Location options": "Location options",
+    "Location links": "Location links",
+    "Locations": "Locations",
+    "Magnification used in Focus mode.": "Magnification used in Focus mode.",
+    "Manuscript defaults, page presentation, and plugin availability": "Manuscript defaults, page presentation, and plugin availability",
+    "Measurement system": "Measurement system",
+    "Medium": "Medium",
+    "Metadata used by StoryLine manuscript exports": "Metadata used by StoryLine manuscript exports",
+    "Metric": "Metric",
+    "Metric (centimeters)": "Metric (centimeters)",
+    "Name": "Name",
+    "New {value}": "New {value}",
+    "New Character": "New Character",
+    "New Item": "New Item",
+    "New Location": "New Location",
+    "No {value} found": "No {value} found",
+    "No active StoryLine project.": "No active StoryLine project.",
+    "No StoryLine scenes to export.": "No StoryLine scenes to export.",
+    "No characters found": "No characters found",
+    "No items found": "No items found",
+    "No locations found": "No locations found",
+    "No unsaved changes": "No unsaved changes",
+    "Normal": "Normal",
+    "Normalize line breaks on save": "Normalize line breaks on save",
+    "Norwegian": "Norwegian",
+    "Not installed": "Not installed",
+    "Noveler": "Noveler",
+    "Noveler Antidote: Correct selection": "Noveler Antidote: Correct selection",
+    "Noveler Antidote: Correct whole document": "Noveler Antidote: Correct whole document",
+    "Noveler Antidote: Open dictionary": "Noveler Antidote: Open dictionary",
+    "Noveler Antidote: Open guide": "Noveler Antidote: Open guide",
+    "Noveler bridge only opens StoryLine scene files: {value}": "Noveler bridge only opens StoryLine scene files: {value}",
+    "Noveler bridge only opens Markdown files inside a project's Scenes folder.": "Noveler bridge only opens Markdown files inside a project's Scenes folder.",
+    "Noveler cannot open {value} because it is not a file.": "Noveler cannot open {value} because it is not a file.",
+    "Noveler could not access the clipboard.": "Noveler could not access the clipboard.",
+    "Noveler could not copy the selection.": "Noveler could not copy the selection.",
+    "Noveler could not create the StoryLine annotation.": "Noveler could not create the StoryLine annotation.",
+    "Noveler could not create the StoryLine Codex entry.": "Noveler could not create the StoryLine Codex entry.",
+    "Noveler could not cut the selection.": "Noveler could not cut the selection.",
+    "Noveler could not export: {value}": "Noveler could not export: {value}",
+    "Noveler could not find scene: {value}": "Noveler could not find scene: {value}",
+    "Noveler could not find StoryLine scene: {value}": "Noveler could not find StoryLine scene: {value}",
+    "Noveler could not load {value}.": "Noveler could not load {value}.",
+    "Noveler could not load language {value}; English is being used.": "Noveler could not load language {value}; English is being used.",
+    "Noveler could not load language {value}.": "Noveler could not load language {value}.",
+    "Noveler could not migrate {value} into the plugin folder.": "Noveler could not migrate {value} into the plugin folder.",
+    "Noveler could not migrate the former StoryLine bridge settings.": "Noveler could not migrate the former StoryLine bridge settings.",
+    "Noveler could not open the StoryLine entry.": "Noveler could not open the StoryLine entry.",
+    "Noveler could not parse scene frontmatter.": "Noveler could not parse scene frontmatter.",
+    "Noveler could not persist scene typography settings.": "Noveler could not persist scene typography settings.",
+    "Noveler could not read installed fonts.": "Noveler could not read installed fonts.",
+    "Noveler could not refresh StoryLine links after an entity change.": "Noveler could not refresh StoryLine links after an entity change.",
+    "Noveler could not remove the legacy {value}.": "Noveler could not remove the legacy {value}.",
+    "Noveler could not save settings.": "Noveler could not save settings.",
+    "Noveler could not save: {value}": "Noveler could not save: {value}",
+    "Noveler could not scan its language folder.": "Noveler could not scan its language folder.",
+    "Noveler could not refresh its language files.": "Noveler could not refresh its language files.",
+    "Noveler could not stringify scene frontmatter.": "Noveler could not stringify scene frontmatter.",
+    "Noveler could not update or open the StoryLine entry.": "Noveler could not update or open the StoryLine entry.",
+    "Noveler could not write {value}.": "Noveler could not write {value}.",
+    "Noveler export headings": "Noveler export headings",
+    "Noveler exported {value}.": "Noveler exported {value}.",
+    "Noveler detected external changes to this scene. Saving is paused until the scene is reopened.": "Noveler detected external changes to this scene. Saving is paused until the scene is reopened.",
+    "Noveler did not overwrite external scene changes. Reopen the scene to load the newer file.": "Noveler did not overwrite external scene changes. Reopen the scene to load the newer file.",
+    "Noveler did not save because this scene changed outside the editor. Reopen it first.": "Noveler did not save because this scene changed outside the editor. Reopen it first.",
+    "Noveler ignored invalid language metadata in {value}.": "Noveler ignored invalid language metadata in {value}.",
+    "Noveler manuscript editor": "Noveler manuscript editor",
+    "Noveler manuscript saved.": "Noveler manuscript saved.",
+    "Noveler is not available for this StoryLine scene.": "Noveler is not available for this StoryLine scene.",
+    "Noveler kept the current scene open because its changes could not be saved.": "Noveler kept the current scene open because its changes could not be saved.",
+    "Noveler opened {value}.": "Noveler opened {value}.",
+    "Noveler saved its settings JSON but could not update Obsidian's plugin data cache.": "Noveler saved its settings JSON but could not update Obsidian's plugin data cache.",
+    "Noveler settings saved to {value}.": "Noveler settings saved to {value}.",
+    "Noveler settings were not saved: {value}": "Noveler settings were not saved: {value}",
+    "Noveler: Align {value}": "Noveler: Align {value}",
+    "Noveler: Apply block quote": "Noveler: Apply block quote",
+    "Noveler: Apply dialogue paragraph": "Noveler: Apply dialogue paragraph",
+    "Noveler: Apply heading {value}": "Noveler: Apply heading {value}",
+    "Noveler: Apply normal paragraph": "Noveler: Apply normal paragraph",
+    "Noveler: Decrease bottom margin": "Noveler: Decrease bottom margin",
+    "Noveler: Decrease custom line height": "Noveler: Decrease custom line height",
+    "Noveler: Decrease first-line indent": "Noveler: Decrease first-line indent",
+    "Noveler: Decrease font scale": "Noveler: Decrease font scale",
+    "Noveler: Decrease font size": "Noveler: Decrease font size",
+    "Noveler: Decrease hanging indent": "Noveler: Decrease hanging indent",
+    "Noveler: Decrease left margin": "Noveler: Decrease left margin",
+    "Noveler: Decrease paragraph spacing after": "Noveler: Decrease paragraph spacing after",
+    "Noveler: Decrease paragraph spacing before": "Noveler: Decrease paragraph spacing before",
+    "Noveler: Decrease right margin": "Noveler: Decrease right margin",
+    "Noveler: Decrease top margin": "Noveler: Decrease top margin",
+    "Noveler: Export manuscript to Markdown": "Noveler: Export manuscript to Markdown",
+    "Noveler: Focus mode": "Noveler: Focus mode",
+    "Noveler: Font weight bold": "Noveler: Font weight bold",
+    "Noveler: Font weight light": "Noveler: Font weight light",
+    "Noveler: Font weight medium": "Noveler: Font weight medium",
+    "Noveler: Font weight regular": "Noveler: Font weight regular",
+    "Noveler: Increase bottom margin": "Noveler: Increase bottom margin",
+    "Noveler: Increase custom line height": "Noveler: Increase custom line height",
+    "Noveler: Increase first-line indent": "Noveler: Increase first-line indent",
+    "Noveler: Increase font scale": "Noveler: Increase font scale",
+    "Noveler: Increase font size": "Noveler: Increase font size",
+    "Noveler: Increase hanging indent": "Noveler: Increase hanging indent",
+    "Noveler: Increase left margin": "Noveler: Increase left margin",
+    "Noveler: Increase paragraph spacing after": "Noveler: Increase paragraph spacing after",
+    "Noveler: Increase paragraph spacing before": "Noveler: Increase paragraph spacing before",
+    "Noveler: Increase right margin": "Noveler: Increase right margin",
+    "Noveler: Increase top margin": "Noveler: Increase top margin",
+    "Noveler: Insert centered ornament": "Noveler: Insert centered ornament",
+    "Noveler: Insert checklist": "Noveler: Insert checklist",
+    "Noveler: Insert horizontal rule": "Noveler: Insert horizontal rule",
+    "Noveler: Insert page break": "Noveler: Insert page break",
+    "Noveler: Insert scene break": "Noveler: Insert scene break",
+    "Noveler: Line spacing 1.15": "Noveler: Line spacing 1.15",
+    "Noveler: Line spacing 1.5": "Noveler: Line spacing 1.5",
+    "Noveler: Line spacing double": "Noveler: Line spacing double",
+    "Noveler: Line spacing single": "Noveler: Line spacing single",
+    "Noveler: Narrow page": "Noveler: Narrow page",
+    "Noveler: Page mode": "Noveler: Page mode",
+    "Noveler: Save manuscript": "Noveler: Save manuscript",
+    "Noveler: Toggle auto-capitalization": "Noveler: Toggle auto-capitalization",
+    "Noveler: Toggle bold": "Noveler: Toggle bold",
+    "Noveler: Toggle bulleted list": "Noveler: Toggle bulleted list",
+    "Noveler: Toggle global italic style": "Noveler: Toggle global italic style",
+    "Noveler: Toggle italic": "Noveler: Toggle italic",
+    "Noveler: Toggle kerning": "Noveler: Toggle kerning",
+    "Noveler: Toggle numbered list": "Noveler: Toggle numbered list",
+    "Noveler: Toggle page/focus mode": "Noveler: Toggle page/focus mode",
+    "Noveler: Toggle small caps": "Noveler: Toggle small caps",
+    "Noveler: Toggle smart dashes": "Noveler: Toggle smart dashes",
+    "Noveler: Toggle smart indenting": "Noveler: Toggle smart indenting",
+    "Noveler: Toggle smart quotes": "Noveler: Toggle smart quotes",
+    "Noveler: Toggle strikethrough": "Noveler: Toggle strikethrough",
+    "Noveler: Toggle subscript": "Noveler: Toggle subscript",
+    "Noveler: Toggle superscript": "Noveler: Toggle superscript",
+    "Noveler: Toggle underline": "Noveler: Toggle underline",
+    "Noveler: Use monospace font": "Noveler: Use monospace font",
+    "Noveler: Use sans-serif font": "Noveler: Use sans-serif font",
+    "Noveler: Use serif font": "Noveler: Use serif font",
+    "Noveler: Widen page": "Noveler: Widen page",
+    "Noveler: Zoom in": "Noveler: Zoom in",
+    "Noveler: Zoom out": "Noveler: Zoom out",
+    "Noveler/{value}": "Noveler/{value}",
+    "Numbered list": "Numbered list",
+    "Open a StoryLine project before creating Codex entries.": "Open a StoryLine project before creating Codex entries.",
+    "Open a document in Noveler before using Antidote Connect.": "Open a document in Noveler before using Antidote Connect.",
+    "Open Noveler": "Open Noveler",
+    "Open Noveler manuscript writer": "Open Noveler manuscript writer",
+    "Open scenes in Noveler": "Open scenes in Noveler",
+    "Opening mode": "Opening mode",
+    "Page": "Page",
+    "Page {value}": "Page {value}",
+    "Page format": "Page format",
+    "Page margins": "Page margins",
+    "Page mode": "Page mode",
+    "Page zoom": "Page zoom",
+    "Paste": "Paste",
+    "PDF export requires the Obsidian desktop app.": "PDF export requires the Obsidian desktop app.",
+    "Physical dimensions used in Page mode.": "Physical dimensions used in Page mode.",
+    "Pick text color saturation and brightness": "Pick text color saturation and brightness",
+    "Plugin language": "Plugin language",
+    "Pocket Book": "Pocket Book",
+    "Point size used when a scene has no saved typography.": "Point size used when a scene has no saved typography.",
+    "Polish": "Polish",
+    "Portuguese": "Portuguese",
+    "Ready": "Ready",
+    "Reduce the opacity outside the focus target.": "Reduce the opacity outside the focus target.",
+    "Regular": "Regular",
+    "Remove double spaces on save": "Remove double spaces on save",
+    "Replace Obsidian's Markdown editor for StoryLine scenes.": "Replace Obsidian's Markdown editor for StoryLine scenes.",
+    "Right": "Right",
+    "right": "right",
+    "Right margin {value}": "Right margin {value}",
+    "Russian": "Russian",
+    "Save settings": "Save settings",
+    "Saved in {value}": "Saved in {value}",
+    "Saved text color {value}": "Saved text color {value}",
+    "Saving...": "Saving...",
+    "Scene routing, manuscript integration, and Codex link colors": "Scene routing, manuscript integration, and Codex link colors",
+    "Search {value}": "Search {value}",
+    "Search characters": "Search characters",
+    "Search items": "Search items",
+    "Search locations": "Search locations",
+    "Segoe UI": "Segoe UI",
+    "Select a name in the manuscript first.": "Select a name in the manuscript first.",
+    "Select manuscript text before creating an annotation.": "Select manuscript text before creating an annotation.",
+    "Select a StoryLine scene before saving in bridge mode.": "Select a StoryLine scene before saving in bridge mode.",
+    "Semi-bold": "Semi-bold",
+    "Set the printable area in {value}.": "Set the printable area in {value}.",
+    "Show Act": "Show Act",
+    "Show Book Title": "Show Book Title",
+    "Show Chapter": "Show Chapter",
+    "Single": "Single",
+    "Size": "Size",
+    "Smart dashes": "Smart dashes",
+    "Smart indenting": "Smart indenting",
+    "Smart quotes": "Smart quotes",
+    "Softcover Book": "Softcover Book",
+    "Spanish": "Spanish",
+    "StoryLine": "StoryLine",
+    "StoryLine Bridge: Export manuscript to DOCX with Noveler formatting": "StoryLine Bridge: Export manuscript to DOCX with Noveler formatting",
+    "StoryLine Bridge: Export manuscript to ePub": "StoryLine Bridge: Export manuscript to ePub",
+    "StoryLine Bridge: Export manuscript to PDF with Noveler formatting": "StoryLine Bridge: Export manuscript to PDF with Noveler formatting",
+    "StoryLine character manager cannot save aliases": "StoryLine character manager cannot save aliases",
+    "StoryLine character manager is unavailable": "StoryLine character manager is unavailable",
+    "StoryLine Codex manager is unavailable": "StoryLine Codex manager is unavailable",
+    "StoryLine Codex names must be 120 characters or fewer.": "StoryLine Codex names must be 120 characters or fewer.",
+    "StoryLine could not create the Scene Notes file": "StoryLine could not create the Scene Notes file",
+    "StoryLine location manager cannot save aliases": "StoryLine location manager cannot save aliases",
+    "StoryLine location manager is unavailable": "StoryLine location manager is unavailable",
+    "StoryLine root folder": "StoryLine root folder",
+    "StoryLine Scene Notes API is unavailable": "StoryLine Scene Notes API is unavailable",
+    "StoryLine is not available. Install and enable StoryLine, then try the export again.": "StoryLine is not available. Install and enable StoryLine, then try the export again.",
+    "Strikethrough": "Strikethrough",
+    "Style": "Style",
+    "Swedish": "Swedish",
+    "Text color": "Text color",
+    "Text color hue": "Text color hue",
+    "The active file is not a StoryLine scene.": "The active file is not a StoryLine scene.",
+    "The annotated passage could not be found in the current scene text.": "The annotated passage could not be found in the current scene text.",
+    "The language file must contain a strings object.": "The language file must contain a strings object.",
+    "The layout used when Noveler opens.": "The layout used when Noveler opens.",
+    "The publication language stored in EPUB metadata and document markup.": "The publication language stored in EPUB metadata and document markup.",
+    "The vault folder containing StoryLine projects.": "The vault folder containing StoryLine projects.",
+    "This name is used for both the StoryLine entry and its Markdown filename.": "This name is used for both the StoryLine entry and its Markdown filename.",
+    "Times New Roman": "Times New Roman",
+    "Top": "Top",
+    "Top margin {value}": "Top margin {value}",
+    "Trebuchet MS": "Trebuchet MS",
+    "Typewriter mode": "Typewriter mode",
+    "Typing assistance and save-time normalization": "Typing assistance and save-time normalization",
+    "Typography presets for manuscript headings": "Typography presets for manuscript headings",
+    "Ukrainian": "Ukrainian",
+    "Underline": "Underline",
+    "Unable to communicate with Connectix Agent (Antidote).": "Unable to communicate with Connectix Agent (Antidote).",
+    "Undo {value} changes": "Undo {value} changes",
+    "Unsaved changes": "Unsaved changes",
+    "Unsaved settings": "Unsaved settings",
+    "US Letter": "US Letter",
+    "Use Noveler in Manuscript": "Use Noveler in Manuscript",
+    "Used by rulers and margin controls.": "Used by rulers and margin controls.",
+    "Verdana": "Verdana",
+    "Visual link color": "Visual link color",
+    "Visual text size in points.": "Visual text size in points.",
+    "Weight": "Weight",
+    "Writing environment, page presentation, and StoryLine workflow.": "Writing environment, page presentation, and StoryLine workflow.",
+    "Zoom": "Zoom"
+  })
+});
 
 const DEFAULT_SETTINGS = {
   language: DEFAULT_LOCALE,
@@ -823,8 +1217,8 @@ class NovelerLocalization {
   constructor(plugin) {
     this.plugin = plugin;
     this.locale = DEFAULT_LOCALE;
-    this.catalog = {};
-    this.locales = [];
+    this.catalog = ENGLISH_LOCALE.strings;
+    this.locales = [this.getEnglishLocaleEntry()];
     this.templates = [];
     this.textSources = new WeakMap();
     this.attributeSources = new WeakMap();
@@ -832,8 +1226,8 @@ class NovelerLocalization {
     this.pollTimer = null;
     this.polling = false;
     this.localeFingerprint = "";
-    this.catalogPath = "";
-    this.catalogMtime = 0;
+    this.catalogSha = "built-in";
+    this.discoveryErrorShown = false;
     this.scopeSelector = [
       ".noveler-view",
       ".noveler-settings",
@@ -847,12 +1241,43 @@ class NovelerLocalization {
   }
 
   get directoryPath() {
-    const pluginDir = normalizeVaultPath(this.plugin.manifest && this.plugin.manifest.dir ? this.plugin.manifest.dir : "");
-    if (pluginDir) {
-      return pluginDir;
+    return LOCALE_FOLDER_NAME;
+  }
+
+  get contentsApiUrl() {
+    return `https://api.github.com/repos/${LOCALE_REPOSITORY}/contents/${this.directoryPath}?ref=${encodeURIComponent(LOCALE_REPOSITORY_BRANCH)}`;
+  }
+
+  getEnglishLocaleEntry() {
+    return {
+      locale: DEFAULT_LOCALE,
+      name: ENGLISH_LOCALE.name,
+      path: "",
+      sha: "built-in",
+      builtIn: true
+    };
+  }
+
+  getRemoteCatalogUrl(entry) {
+    const locale = encodeURIComponent(entry.locale);
+    const sha = encodeURIComponent(entry.sha || "latest");
+    return `https://raw.githubusercontent.com/${LOCALE_REPOSITORY}/${LOCALE_REPOSITORY_BRANCH}/${this.directoryPath}/${locale}.json?sha=${sha}`;
+  }
+
+  formatLocaleName(locale) {
+    const [language, region] = String(locale || "").split("-");
+    try {
+      if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+        const languageName = new Intl.DisplayNames([locale], { type: "language" }).of(language);
+        const regionName = new Intl.DisplayNames([locale], { type: "region" }).of(region);
+        if (languageName && regionName) {
+          return `${languageName.charAt(0).toUpperCase()}${languageName.slice(1)} (${regionName})`;
+        }
+      }
+    } catch (_error) {
+      // Fall back to the locale code when the runtime cannot format it.
     }
-    const configDir = normalizeVaultPath(this.plugin.app.vault.configDir || ".obsidian");
-    return `${configDir}/plugins/${this.plugin.manifest.id}`;
+    return locale;
   }
 
   normalizeLocale(value) {
@@ -861,95 +1286,107 @@ class NovelerLocalization {
   }
 
   async initialize(requestedLocale) {
-    await this.discoverLocales();
+    await this.discoverLocales({ notify: false });
     await this.setLocale(requestedLocale, { refresh: false });
   }
 
-  async discoverLocales() {
-    const adapter = this.plugin.app.vault.adapter;
-    const discovered = [];
-    if (adapter && typeof adapter.exists === "function" && typeof adapter.list === "function") {
-      try {
-        if (await adapter.exists(this.directoryPath)) {
-          const listing = await adapter.list(this.directoryPath);
-          for (const path of listing.files || []) {
-            const match = String(path).replace(/\\/g, "/").match(/\/([a-z]{2,3}-[A-Z]{2})\.json$/);
-            if (!match) {
-              continue;
-            }
-            const locale = match[1];
-            let name = locale;
-            try {
-              const parsed = JSON.parse(await adapter.read(path));
-              name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : locale;
-            } catch (error) {
-              console.warn(`Noveler ignored invalid language metadata in ${path}.`, error);
-            }
-            discovered.push({ locale, name, path });
+  async discoverLocales(options = {}) {
+    try {
+      const response = await requestUrl({
+        url: this.contentsApiUrl,
+        method: "GET",
+        headers: { Accept: "application/vnd.github+json" }
+      });
+      if (!response || response.status < 200 || response.status >= 300) {
+        throw new Error(`GitHub returned HTTP ${response ? response.status : "unknown"}.`);
+      }
+      const listing = response.json !== undefined ? response.json : JSON.parse(response.text || "[]");
+      if (!Array.isArray(listing)) {
+        throw new Error("GitHub did not return a language directory listing.");
+      }
+      const discovered = listing
+        .filter((entry) => entry && entry.type === "file")
+        .map((entry) => {
+          const match = String(entry.name || "").match(/^([a-z]{2,3}-[A-Z]{2})\.json$/);
+          if (!match || match[1] === DEFAULT_LOCALE) {
+            return null;
           }
-        }
-      } catch (error) {
-        console.warn("Noveler could not scan its language folder.", error);
+          return {
+            locale: match[1],
+            name: this.formatLocaleName(match[1]),
+            path: String(entry.path || `${LOCALE_FOLDER_NAME}/${entry.name}`),
+            sha: String(entry.sha || ""),
+            remote: true
+          };
+        })
+        .filter(Boolean)
+        .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.locale === entry.locale) === index)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      this.locales = [this.getEnglishLocaleEntry(), ...discovered];
+      this.localeFingerprint = this.locales.map((entry) => `${entry.locale}:${entry.name}:${entry.path}:${entry.sha}`).join("|");
+      this.discoveryErrorShown = false;
+    } catch (error) {
+      console.warn("Noveler could not refresh its language files.", error);
+      if (options.notify && !this.discoveryErrorShown) {
+        this.discoveryErrorShown = true;
+        new Notice(this.translate("Noveler could not refresh its language files."));
       }
     }
-    if (!discovered.some((entry) => entry.locale === DEFAULT_LOCALE)) {
-      discovered.push({ locale: DEFAULT_LOCALE, name: "English (United States)", path: "" });
-    }
-    this.locales = discovered
-      .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.locale === entry.locale) === index)
-      .sort((left, right) => left.name.localeCompare(right.name));
-    this.localeFingerprint = this.locales.map((entry) => `${entry.locale}:${entry.name}:${entry.path}`).join("|");
     return this.locales;
   }
 
-  async getFileMtime(path) {
-    const adapter = this.plugin.app.vault.adapter;
-    if (!path || !adapter || typeof adapter.stat !== "function") {
-      return 0;
-    }
-    try {
-      const stat = await adapter.stat(path);
-      return stat && Number.isFinite(Number(stat.mtime)) ? Number(stat.mtime) : 0;
-    } catch (_error) {
-      return 0;
-    }
-  }
-
   async readCatalog(locale) {
+    if (locale === DEFAULT_LOCALE) {
+      return { strings: ENGLISH_LOCALE.strings, sha: "built-in", name: ENGLISH_LOCALE.name };
+    }
     const entry = this.locales.find((candidate) => candidate.locale === locale);
-    if (!entry || !entry.path) {
-      return {};
+    if (!entry || !entry.remote) {
+      return null;
     }
     try {
-      const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(entry.path));
+      const response = await requestUrl({ url: this.getRemoteCatalogUrl(entry), method: "GET" });
+      if (!response || response.status < 200 || response.status >= 300) {
+        throw new Error(`GitHub returned HTTP ${response ? response.status : "unknown"}.`);
+      }
+      const parsed = response.json !== undefined ? response.json : JSON.parse(response.text || "{}");
       if (!parsed || typeof parsed.strings !== "object" || Array.isArray(parsed.strings)) {
         throw new Error("The language file must contain a strings object.");
       }
-      return Object.fromEntries(Object.entries(parsed.strings).filter(([key, value]) => (
-        typeof key === "string" && typeof value === "string"
-      )));
+      if (parsed.locale && parsed.locale !== locale) {
+        throw new Error(`The language file identifies itself as ${parsed.locale}, not ${locale}.`);
+      }
+      const name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : entry.name;
+      entry.name = name;
+      this.localeFingerprint = this.locales.map((candidate) => (
+        `${candidate.locale}:${candidate.name}:${candidate.path}:${candidate.sha}`
+      )).join("|");
+      return {
+        strings: Object.fromEntries(Object.entries(parsed.strings).filter(([key, value]) => (
+          typeof key === "string" && typeof value === "string"
+        ))),
+        sha: entry.sha,
+        name
+      };
     } catch (error) {
       console.error(`Noveler could not load language ${locale}.`, error);
-      if (locale !== DEFAULT_LOCALE) {
-        new Notice(`Noveler could not load language ${locale}; English is being used.`);
-      }
-      return {};
+      new Notice(this.translate(`Noveler could not load language ${locale}; English is being used.`));
+      return null;
     }
   }
 
   async setLocale(requestedLocale, options = {}) {
     const normalized = this.normalizeLocale(requestedLocale);
     const available = this.locales.some((entry) => entry.locale === normalized) ? normalized : DEFAULT_LOCALE;
-    this.catalog = await this.readCatalog(available);
-    this.locale = available;
-    const entry = this.locales.find((candidate) => candidate.locale === available);
-    this.catalogPath = entry ? entry.path : "";
-    this.catalogMtime = await this.getFileMtime(this.catalogPath);
+    const loaded = await this.readCatalog(available);
+    const selected = loaded ? available : DEFAULT_LOCALE;
+    this.catalog = loaded ? loaded.strings : ENGLISH_LOCALE.strings;
+    this.locale = selected;
+    this.catalogSha = loaded ? loaded.sha : "built-in";
     this.compileTemplates();
     if (options.refresh !== false) {
       this.refresh();
     }
-    return available;
+    return selected;
   }
 
   compileTemplates() {
@@ -1117,7 +1554,7 @@ class NovelerLocalization {
     });
     this.pollTimer = window.setInterval(() => {
       this.pollLocaleFiles().catch((error) => console.warn("Noveler could not refresh its language files.", error));
-    }, 3000);
+    }, LOCALE_REFRESH_INTERVAL_MS);
   }
 
   async pollLocaleFiles() {
@@ -1126,22 +1563,19 @@ class NovelerLocalization {
     }
     this.polling = true;
     try {
+      const activeLocale = this.locale;
       const previousFingerprint = this.localeFingerprint;
-      await this.discoverLocales();
+      await this.discoverLocales({ notify: false });
       if (previousFingerprint !== this.localeFingerprint) {
         window.dispatchEvent(new CustomEvent("noveler-locales-changed", { detail: { locales: this.locales } }));
       }
-      const entry = this.locales.find((candidate) => candidate.locale === this.locale);
-      if (!entry && this.locale !== DEFAULT_LOCALE) {
-        await this.plugin.changeLanguage(DEFAULT_LOCALE);
+      const entry = this.locales.find((candidate) => candidate.locale === activeLocale);
+      if (!entry && activeLocale !== DEFAULT_LOCALE) {
+        await this.plugin.changeLanguage(DEFAULT_LOCALE, { discover: false });
         return;
       }
-      const path = entry ? entry.path : "";
-      const mtime = await this.getFileMtime(path);
-      if (path && (path !== this.catalogPath || (mtime && mtime !== this.catalogMtime))) {
-        await this.setLocale(this.locale);
-        this.plugin.refreshLocalizedCommands();
-        window.dispatchEvent(new CustomEvent("noveler-language-changed", { detail: { locale: this.locale } }));
+      if (entry && entry.remote && entry.sha && entry.sha !== this.catalogSha) {
+        await this.plugin.changeLanguage(activeLocale, { discover: false });
       }
     } finally {
       this.polling = false;
@@ -1423,11 +1857,14 @@ class NovelerPlugin extends Plugin {
     }
   }
 
-  async changeLanguage(locale) {
+  async changeLanguage(locale, options = {}) {
     if (!this.localization) {
       return DEFAULT_LOCALE;
     }
-    await this.localization.discoverLocales();
+    const normalized = this.localization.normalizeLocale(locale);
+    if (options.discover !== false && !this.localization.locales.some((entry) => entry.locale === normalized)) {
+      await this.localization.discoverLocales({ notify: true });
+    }
     const selected = await this.localization.setLocale(locale);
     this.settings.language = selected;
     await this.queueSettingsPersistence(this.getSerializableSettings(), true);
