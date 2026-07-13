@@ -1228,6 +1228,13 @@ class NovelerPlugin extends Plugin {
     }
 
     let leaf = this.enforceSingleNovelerView();
+    if (leaf && leaf.view instanceof NovelerView) {
+      if (state.path) {
+        await leaf.view.openScenePath(state.path, { source: state.source, silent: true });
+      }
+      this.app.workspace.revealLeaf(leaf);
+      return;
+    }
     if (!leaf) {
       leaf = options.targetLeaf && options.replaceLeaf
         ? options.targetLeaf
@@ -9462,12 +9469,42 @@ class NovelerStoryLineBridgePlugin {
       return;
     }
 
-    const leaf = this.app.workspace.activeLeaf;
+    const sourceLeaf = this.app.workspace.activeLeaf;
     await this.openSceneInNoveler(file.path, {
       source: "storyline-file-open",
-      targetLeaf: leaf,
+      targetLeaf: sourceLeaf,
       replaceLeaf: true
     });
+
+    const novelerLeaf = (this.app.workspace.getLeavesOfType(NOVELER_VIEW_TYPE) || []).find((leaf) => {
+      const view = leaf && leaf.view;
+      return view && normalizeVaultPath(view.currentDocumentPath) === normalizeVaultPath(file.path);
+    });
+    if (
+      novelerLeaf
+      && sourceLeaf
+      && sourceLeaf !== novelerLeaf
+      && typeof sourceLeaf.detach === "function"
+      && this.getLeafViewType(sourceLeaf) === "markdown"
+      && this.getLeafFilePath(sourceLeaf) === normalizeVaultPath(file.path)
+    ) {
+      sourceLeaf.detach();
+    }
+  }
+
+  getLeafViewType(leaf) {
+    const view = leaf && leaf.view;
+    return view && typeof view.getViewType === "function" ? String(view.getViewType() || "") : "";
+  }
+
+  getLeafFilePath(leaf) {
+    const view = leaf && leaf.view;
+    if (view && view.file instanceof TFile) {
+      return normalizeVaultPath(view.file.path);
+    }
+    const viewState = leaf && typeof leaf.getViewState === "function" ? leaf.getViewState() : null;
+    const state = viewState && viewState.state;
+    return normalizeVaultPath(state && (state.file || state.path));
   }
 
   async openSceneInNoveler(path, options = {}) {
