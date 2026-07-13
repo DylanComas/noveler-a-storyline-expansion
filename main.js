@@ -10,8 +10,11 @@ const SETTINGS_FILE_NAME = "Noveler Settings.json";
 const LEGACY_SETTINGS_FILE_PATH = SETTINGS_FILE_NAME;
 const SETTINGS_FILE_VERSION = 1;
 const ANNOTATION_LINK_MARKER = "#noveler-annotation-";
+const DEFAULT_LOCALE = "en-US";
+const LOCALE_FOLDER_NAME = ".lang";
 
 const DEFAULT_SETTINGS = {
+  language: DEFAULT_LOCALE,
   manuscriptPath: "Noveler Manuscript.md",
   exportPath: "Noveler Export.md",
   sceneBreakGlyph: "***",
@@ -813,6 +816,355 @@ function getElementForNode(node) {
   return isElementNode(node) ? node : node.parentElement;
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+class NovelerLocalization {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.locale = DEFAULT_LOCALE;
+    this.catalog = {};
+    this.locales = [];
+    this.templates = [];
+    this.textSources = new WeakMap();
+    this.attributeSources = new WeakMap();
+    this.observer = null;
+    this.pollTimer = null;
+    this.polling = false;
+    this.localeFingerprint = "";
+    this.catalogPath = "";
+    this.catalogMtime = 0;
+    this.scopeSelector = [
+      ".noveler-view",
+      ".noveler-settings",
+      ".noveler-context-menu",
+      ".noveler-storyline-context-submenu",
+      ".noveler-entry-modal",
+      ".noveler-color-popover",
+      ".noveler-bridge-export-options",
+      ".notice"
+    ].join(", ");
+  }
+
+  get folderPath() {
+    const pluginDir = normalizeVaultPath(this.plugin.manifest && this.plugin.manifest.dir ? this.plugin.manifest.dir : "");
+    if (pluginDir) {
+      return `${pluginDir}/${LOCALE_FOLDER_NAME}`;
+    }
+    const configDir = normalizeVaultPath(this.plugin.app.vault.configDir || ".obsidian");
+    return `${configDir}/plugins/${this.plugin.manifest.id}/${LOCALE_FOLDER_NAME}`;
+  }
+
+  normalizeLocale(value) {
+    const locale = String(value || "").trim();
+    return /^[a-z]{2,3}-[A-Z]{2}$/.test(locale) ? locale : DEFAULT_LOCALE;
+  }
+
+  async initialize(requestedLocale) {
+    await this.discoverLocales();
+    await this.setLocale(requestedLocale, { refresh: false });
+  }
+
+  async discoverLocales() {
+    const adapter = this.plugin.app.vault.adapter;
+    const discovered = [];
+    if (adapter && typeof adapter.exists === "function" && typeof adapter.list === "function") {
+      try {
+        if (await adapter.exists(this.folderPath)) {
+          const listing = await adapter.list(this.folderPath);
+          for (const path of listing.files || []) {
+            const match = String(path).replace(/\\/g, "/").match(/\/([a-z]{2,3}-[A-Z]{2})\.json$/);
+            if (!match) {
+              continue;
+            }
+            const locale = match[1];
+            let name = locale;
+            try {
+              const parsed = JSON.parse(await adapter.read(path));
+              name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : locale;
+            } catch (error) {
+              console.warn(`Noveler ignored invalid language metadata in ${path}.`, error);
+            }
+            discovered.push({ locale, name, path });
+          }
+        }
+      } catch (error) {
+        console.warn("Noveler could not scan its language folder.", error);
+      }
+    }
+    if (!discovered.some((entry) => entry.locale === DEFAULT_LOCALE)) {
+      discovered.push({ locale: DEFAULT_LOCALE, name: "English (United States)", path: "" });
+    }
+    this.locales = discovered
+      .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.locale === entry.locale) === index)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    this.localeFingerprint = this.locales.map((entry) => `${entry.locale}:${entry.name}:${entry.path}`).join("|");
+    return this.locales;
+  }
+
+  async getFileMtime(path) {
+    const adapter = this.plugin.app.vault.adapter;
+    if (!path || !adapter || typeof adapter.stat !== "function") {
+      return 0;
+    }
+    try {
+      const stat = await adapter.stat(path);
+      return stat && Number.isFinite(Number(stat.mtime)) ? Number(stat.mtime) : 0;
+    } catch (_error) {
+      return 0;
+    }
+  }
+
+  async readCatalog(locale) {
+    const entry = this.locales.find((candidate) => candidate.locale === locale);
+    if (!entry || !entry.path) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(entry.path));
+      if (!parsed || typeof parsed.strings !== "object" || Array.isArray(parsed.strings)) {
+        throw new Error("The language file must contain a strings object.");
+      }
+      return Object.fromEntries(Object.entries(parsed.strings).filter(([key, value]) => (
+        typeof key === "string" && typeof value === "string"
+      )));
+    } catch (error) {
+      console.error(`Noveler could not load language ${locale}.`, error);
+      if (locale !== DEFAULT_LOCALE) {
+        new Notice(`Noveler could not load language ${locale}; English is being used.`);
+      }
+      return {};
+    }
+  }
+
+  async setLocale(requestedLocale, options = {}) {
+    const normalized = this.normalizeLocale(requestedLocale);
+    const available = this.locales.some((entry) => entry.locale === normalized) ? normalized : DEFAULT_LOCALE;
+    this.catalog = await this.readCatalog(available);
+    this.locale = available;
+    const entry = this.locales.find((candidate) => candidate.locale === available);
+    this.catalogPath = entry ? entry.path : "";
+    this.catalogMtime = await this.getFileMtime(this.catalogPath);
+    this.compileTemplates();
+    if (options.refresh !== false) {
+      this.refresh();
+    }
+    return available;
+  }
+
+  compileTemplates() {
+    this.templates = [];
+    for (const [source, translated] of Object.entries(this.catalog)) {
+      const names = [];
+      let cursor = 0;
+      let pattern = "";
+      for (const match of source.matchAll(/\{([a-zA-Z0-9_]+)\}/g)) {
+        pattern += escapeRegExp(source.slice(cursor, match.index));
+        pattern += "(.+?)";
+        names.push(match[1]);
+        cursor = match.index + match[0].length;
+      }
+      if (!names.length) {
+        continue;
+      }
+      pattern += escapeRegExp(source.slice(cursor));
+      this.templates.push({ regex: new RegExp(`^${pattern}$`), names, translated });
+    }
+  }
+
+  translate(source) {
+    const value = String(source == null ? "" : source);
+    if (Object.prototype.hasOwnProperty.call(this.catalog, value)) {
+      return this.catalog[value];
+    }
+    for (const template of this.templates) {
+      const match = value.match(template.regex);
+      if (!match) {
+        continue;
+      }
+      const values = Object.fromEntries(template.names.map((name, index) => [name, match[index + 1]]));
+      return template.translated.replace(/\{([a-zA-Z0-9_]+)\}/g, (token, name) => (
+        Object.prototype.hasOwnProperty.call(values, name) ? values[name] : token
+      ));
+    }
+    return value;
+  }
+
+  translatePreservingWhitespace(value) {
+    const match = String(value || "").match(/^(\s*)([\s\S]*?)(\s*)$/);
+    if (!match || !match[2]) {
+      return value;
+    }
+    return `${match[1]}${this.translate(match[2])}${match[3]}`;
+  }
+
+  shouldIgnore(node) {
+    const element = node && node.nodeType === Node.ELEMENT_NODE ? node : node && node.parentElement;
+    return !!(element && element.closest(
+      ".noveler-editor, .noveler-page-content, .cm-editor, .markdown-source-view, .markdown-preview-view, textarea, script, style, code, pre"
+    ));
+  }
+
+  isInScope(node) {
+    const element = node && node.nodeType === Node.ELEMENT_NODE ? node : node && node.parentElement;
+    if (!element) {
+      return false;
+    }
+    return !!element.closest(this.scopeSelector);
+  }
+
+  localizeTextNode(node) {
+    if (!node || node.nodeType !== Node.TEXT_NODE || this.shouldIgnore(node) || !this.isInScope(node)) {
+      return;
+    }
+    const current = node.nodeValue || "";
+    const previous = this.textSources.get(node);
+    const source = previous && current === previous.rendered ? previous.source : current;
+    const rendered = this.translatePreservingWhitespace(source);
+    this.textSources.set(node, { source, rendered });
+    if (current !== rendered) {
+      node.nodeValue = rendered;
+    }
+  }
+
+  localizeAttributes(element) {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE || this.shouldIgnore(element) || !this.isInScope(element)) {
+      return;
+    }
+    const attributes = ["aria-label", "placeholder", "title"];
+    let records = this.attributeSources.get(element);
+    if (!records) {
+      records = new Map();
+      this.attributeSources.set(element, records);
+    }
+    for (const name of attributes) {
+      if (!element.hasAttribute(name)) {
+        continue;
+      }
+      const current = element.getAttribute(name) || "";
+      const previous = records.get(name);
+      const source = previous && current === previous.rendered ? previous.source : current;
+      const rendered = this.translate(source);
+      records.set(name, { source, rendered });
+      if (current !== rendered) {
+        element.setAttribute(name, rendered);
+      }
+    }
+  }
+
+  localizeTree(root) {
+    if (!root || this.shouldIgnore(root)) {
+      return;
+    }
+    if (root.nodeType === Node.TEXT_NODE) {
+      this.localizeTextNode(root);
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) {
+      return;
+    }
+    if (root.nodeType === Node.ELEMENT_NODE) {
+      this.localizeAttributes(root);
+    }
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => this.shouldIgnore(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+      }
+    );
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        this.localizeTextNode(node);
+      } else {
+        this.localizeAttributes(node);
+      }
+      node = walker.nextNode();
+    }
+  }
+
+  start() {
+    if (this.observer || !document.body) {
+      return;
+    }
+    this.refresh();
+    this.observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "characterData") {
+          this.localizeTextNode(mutation.target);
+        } else if (mutation.type === "attributes") {
+          this.localizeAttributes(mutation.target);
+        } else {
+          for (const node of mutation.addedNodes) {
+            this.localizeTree(node);
+          }
+        }
+      }
+    });
+    this.observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["aria-label", "placeholder", "title"]
+    });
+    this.pollTimer = window.setInterval(() => {
+      this.pollLocaleFiles().catch((error) => console.warn("Noveler could not refresh its language files.", error));
+    }, 3000);
+  }
+
+  async pollLocaleFiles() {
+    if (this.polling) {
+      return;
+    }
+    this.polling = true;
+    try {
+      const previousFingerprint = this.localeFingerprint;
+      await this.discoverLocales();
+      if (previousFingerprint !== this.localeFingerprint) {
+        window.dispatchEvent(new CustomEvent("noveler-locales-changed", { detail: { locales: this.locales } }));
+      }
+      const entry = this.locales.find((candidate) => candidate.locale === this.locale);
+      if (!entry && this.locale !== DEFAULT_LOCALE) {
+        await this.plugin.changeLanguage(DEFAULT_LOCALE);
+        return;
+      }
+      const path = entry ? entry.path : "";
+      const mtime = await this.getFileMtime(path);
+      if (path && (path !== this.catalogPath || (mtime && mtime !== this.catalogMtime))) {
+        await this.setLocale(this.locale);
+        this.plugin.refreshLocalizedCommands();
+        window.dispatchEvent(new CustomEvent("noveler-language-changed", { detail: { locale: this.locale } }));
+      }
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  refresh() {
+    if (document.body) {
+      for (const root of document.querySelectorAll(this.scopeSelector)) {
+        if (!root.parentElement || !root.parentElement.closest(this.scopeSelector)) {
+          this.localizeTree(root);
+        }
+      }
+    }
+  }
+
+  stop() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    if (this.pollTimer) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+}
+
 class NovelerPlugin extends Plugin {
   async onload() {
     this.settingsWritePromise = Promise.resolve();
@@ -820,7 +1172,11 @@ class NovelerPlugin extends Plugin {
     this.propertiesRefreshTimer = null;
     this.focusModeViews = new Set();
     this.focusSidebarState = null;
+    this.localizedCommandNames = new Map();
     await this.loadSettings();
+    this.localization = new NovelerLocalization(this);
+    await this.localization.initialize(this.settings.language);
+    this.localization.start();
 
     this.registerView(VIEW_TYPE, (leaf) => new NovelerView(leaf, this));
     this.registerEvent(this.app.workspace.on("layout-change", () => this.enforceSingleNovelerView()));
@@ -830,7 +1186,7 @@ class NovelerPlugin extends Plugin {
     this.installActiveFileBridge();
     this.registerNovelerApi();
 
-    this.addRibbonIcon("book-open-text", "Open Noveler", () => {
+    this.novelerRibbonEl = this.addRibbonIcon("book-open-text", this.t("Open Noveler"), () => {
       this.activateView();
     });
 
@@ -973,10 +1329,24 @@ class NovelerPlugin extends Plugin {
     this.addViewCommand("noveler-toggle-smart-indent", "Noveler: Toggle smart indenting", (view) => view.toggleAutomationFlag("smartIndent"));
     this.settingTab = new NovelerSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);
+    this.registerDomEvent(window, "noveler-locales-changed", () => {
+      if (this.settingTab && this.settingTab.containerEl && this.settingTab.containerEl.isConnected) {
+        this.settingTab.display();
+      }
+    });
+    this.registerDomEvent(window, "noveler-language-changed", () => {
+      if (this.settingTab && this.settingTab.containerEl && this.settingTab.containerEl.isConnected) {
+        this.localization.refresh();
+      }
+    });
     this.registerVaultTitleSync();
+    this.refreshLocalizedCommands();
   }
 
   onunload() {
+    if (this.localization) {
+      this.localization.stop();
+    }
     if (this.propertiesRefreshTimer) {
       window.clearTimeout(this.propertiesRefreshTimer);
       this.propertiesRefreshTimer = null;
@@ -1004,6 +1374,9 @@ class NovelerPlugin extends Plugin {
       isStoryLineScenePath: (path) => this.isStoryLineScenePath(path),
       isAntidoteConnectEnabled: () => this.isAntidoteConnectEnabled(),
       getActiveView: () => this.getActiveView(),
+      translate: (source) => this.t(source),
+      getLocale: () => this.localization ? this.localization.locale : DEFAULT_LOCALE,
+      setLocale: (locale) => this.changeLanguage(locale),
       createAntidoteDocument: (options = {}) => {
         if (!this.isAntidoteConnectEnabled()) {
           return null;
@@ -1016,6 +1389,57 @@ class NovelerPlugin extends Plugin {
         return view ? view.currentDocumentPath : "";
       }
     };
+  }
+
+  t(source) {
+    return this.localization ? this.localization.translate(source) : String(source == null ? "" : source);
+  }
+
+  addCommand(command) {
+    if (command && command.name) {
+      command.__novelerSourceName = command.__novelerSourceName || command.name;
+      this.localizedCommandNames.set(command.id, command.__novelerSourceName);
+      command.name = this.t(command.__novelerSourceName);
+    }
+    return super.addCommand(command);
+  }
+
+  refreshLocalizedCommands() {
+    const commands = this.app.commands && this.app.commands.commands ? this.app.commands.commands : {};
+    const prefix = `${this.manifest.id}:`;
+    for (const [id, command] of Object.entries(commands)) {
+      if (!id.startsWith(prefix) || !command) {
+        continue;
+      }
+      const localId = id.slice(prefix.length);
+      const sourceName = this.localizedCommandNames.get(localId) || command.__novelerSourceName || command.name;
+      command.__novelerSourceName = sourceName;
+      command.name = this.t(sourceName);
+    }
+  }
+
+  async changeLanguage(locale) {
+    if (!this.localization) {
+      return DEFAULT_LOCALE;
+    }
+    await this.localization.discoverLocales();
+    const selected = await this.localization.setLocale(locale);
+    this.settings.language = selected;
+    await this.queueSettingsPersistence(this.getSerializableSettings(), true);
+    this.refreshLocalizedCommands();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      if (leaf.view instanceof NovelerView) {
+        leaf.view.updatePageFooters();
+      }
+    }
+    if (this.novelerRibbonEl) {
+      this.novelerRibbonEl.setAttribute("aria-label", this.t("Open Noveler"));
+    }
+    if (this.storyLineBridgeModule) {
+      this.storyLineBridgeModule.enhanceStoryLineExportModals();
+    }
+    window.dispatchEvent(new CustomEvent("noveler-language-changed", { detail: { locale: selected } }));
+    return selected;
   }
 
   installActiveFileBridge() {
@@ -3393,7 +3817,7 @@ class NovelerView extends ItemView {
     pages.forEach((page, index) => {
       page.dataset.pageLabel = String(index + 1);
       page.dataset.pageTitle = this.currentDocumentTitle || "";
-      page.setAttribute("aria-label", `Page ${index + 1}`);
+      page.setAttribute("aria-label", this.plugin.t(`Page ${index + 1}`));
     });
     this.editorEl.style.setProperty("--noveler-page-count", String(pages.length || 1));
   }
@@ -4148,6 +4572,9 @@ class NovelerView extends ItemView {
         this.persistGlobalLayoutSetting("rulerUnits");
         this.applySettings();
       }));
+    if (menu.dom) {
+      menu.dom.addClass("noveler-context-menu");
+    }
     menu.showAtMouseEvent(event);
   }
 
@@ -5372,6 +5799,9 @@ class NovelerView extends ItemView {
       this.addStoryLineContextCategory(menu, storyLine, "location", "Locations", "map-pin", selectedText);
       this.addStoryLineContextCategory(menu, storyLine, "item", "Items", "package", selectedText);
     }
+    if (menu.dom) {
+      menu.dom.addClass("noveler-context-menu");
+    }
     menu.showAtMouseEvent(event);
   }
 
@@ -5583,6 +6013,7 @@ class NovelerView extends ItemView {
         modal.close();
       };
       modal.onOpen = () => {
+        (modal.modalEl || modal.contentEl).addClass("noveler-entry-modal");
         modal.titleEl.setText(`New ${labels[kind]}`);
         let name = initialName;
         let createButton;
@@ -6711,6 +7142,26 @@ class NovelerSettingTab extends PluginSettingTab {
     const headerText = header.createDiv();
     headerText.createEl("h2", { text: "Noveler" });
     headerText.createEl("p", { text: "Writing environment, page presentation, and StoryLine workflow." });
+    const languageControl = header.createDiv({ cls: "noveler-settings-language" });
+    languageControl.createEl("label", { text: "Language", attr: { for: "noveler-language-select" } });
+    const languageSelect = languageControl.createEl("select", {
+      attr: { id: "noveler-language-select", "aria-label": "Plugin language" }
+    });
+    const locales = this.plugin.localization ? this.plugin.localization.locales : [];
+    for (const locale of locales) {
+      languageSelect.createEl("option", { text: locale.name, value: locale.locale });
+    }
+    languageSelect.value = this.plugin.localization ? this.plugin.localization.locale : DEFAULT_LOCALE;
+    languageSelect.addEventListener("change", async () => {
+      languageSelect.disabled = true;
+      try {
+        const selected = await this.plugin.changeLanguage(languageSelect.value);
+        draft.language = selected;
+        this.display();
+      } finally {
+        languageSelect.disabled = false;
+      }
+    });
 
     const editorSection = this.createSettingsSection(containerEl, {
       title: "Editor",
@@ -8582,9 +9033,11 @@ class NovelerStoryLineBridgePlugin {
     if (!epubOption) {
       const option = document.createElement("option");
       option.value = "epub";
-      option.text = "ePub (.epub)";
+      option.text = this.host.t("ePub (.epub)");
       const pdfOption = Array.from(formatSelect.options).find((item) => item.value === "pdf");
       formatSelect.add(option, pdfOption ? pdfOption.index + 1 : undefined);
+    } else {
+      epubOption.text = this.host.t("ePub (.epub)");
     }
   }
 

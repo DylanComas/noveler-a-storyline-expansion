@@ -926,6 +926,11 @@
   margin: 0;
 }
 
+.noveler-settings-header > :nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
 .noveler-settings-header p {
   margin-top: 3px;
   color: var(--text-muted);
@@ -946,6 +951,46 @@
 .noveler-settings-header-icon svg {
   width: 22px;
   height: 22px;
+}
+
+.noveler-settings-language {
+  display: flex;
+  min-width: 190px;
+  flex: 0 1 240px;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.noveler-settings-language label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+}
+
+.noveler-settings-language select {
+  width: 100%;
+  max-width: 240px;
+  color: var(--text-normal);
+  background-color: var(--background-modifier-form-field);
+}
+
+@media (max-width: 620px) {
+  .noveler-settings-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .noveler-settings-language {
+    width: 100%;
+    min-width: 0;
+    flex-basis: 100%;
+    margin-left: 56px;
+  }
+
+  .noveler-settings-language select {
+    max-width: none;
+  }
 }
 
 .noveler-settings-section {

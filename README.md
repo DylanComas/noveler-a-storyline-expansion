@@ -197,6 +197,22 @@ Available commands include:
 
 The Antidote Grammar Checker Integration plugin and Antidote Connectix must be installed and available on the desktop system.
 
+### Interface Language
+
+Noveler reads translations from the `.lang` folder inside the plugin directory. Language files use locale filenames such as `en-US.json` or `fr-FR.json` and this structure:
+
+```json
+{
+  "locale": "fr-FR",
+  "name": "Francais (France)",
+  "strings": {
+    "Save settings": "Enregistrer les parametres"
+  }
+}
+```
+
+The language menu is beside the Noveler heading in Settings. New language files and edits to the active file are detected automatically; labels, commands, menus, notices, editor controls, and integration UI update without reloading Obsidian. Missing translations fall back to their English source text. Keep placeholders such as `{value}` and `{value2}` unchanged in translated values.
+
 ### Settings And Legacy Migration
 
 Noveler stores its settings in the plugin folder and can migrate from earlier Noveler-related plugin setups.
