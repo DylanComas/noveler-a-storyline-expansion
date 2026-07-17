@@ -215,6 +215,8 @@ The language menu is beside the Noveler heading in Settings. Noveler queries the
 
 To add a translation, commit a valid `xx-XX.json` catalog to `.lang` on the repository's `main` branch. It will appear in installed copies automatically. Missing or unavailable translations fall back to the embedded English source text. Keep placeholders such as `{value}` and `{value2}` unchanged in translated values.
 
+Translations should describe each control in its Editor, Settings, or StoryLine context. Keep product names and installed font-family names unchanged.
+
 ### Settings And Legacy Migration
 
 Noveler stores its settings in the plugin folder and can migrate from earlier Noveler-related plugin setups.

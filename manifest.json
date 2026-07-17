@@ -1,7 +1,7 @@
 {
   "id": "noveler-a-storyline-expansion",
   "name": "Noveler - A StoryLine Expansion",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "1.12.7",
   "description": "A manuscript editor with integrated StoryLine scene routing, formatted exports, and Antidote Connect support.",
   "author": "Dylan Comas",

@@ -1602,7 +1602,7 @@ class NovelerLocalization {
   shouldIgnore(node) {
     const element = node && node.nodeType === Node.ELEMENT_NODE ? node : node && node.parentElement;
     return !!(element && element.closest(
-      ".noveler-editor, .noveler-page-content, .cm-editor, .markdown-source-view, .markdown-preview-view, textarea, script, style, code, pre"
+      ".noveler-editor, .noveler-page-content, .noveler-font-family-select option, .cm-editor, .markdown-source-view, .markdown-preview-view, textarea, script, style, code, pre"
     ));
   }
 
@@ -3546,6 +3546,9 @@ class NovelerView extends ItemView {
     const field = parent.createDiv({ cls: `noveler-field noveler-field-select noveler-field-${this.getControlClassName(label)}` });
     field.createSpan({ cls: "noveler-field-label", text: label });
     const select = field.createEl("select", { attr: { "aria-label": label } });
+    if (label === "Font") {
+      select.addClass("noveler-font-family-select");
+    }
     for (const [optionValue, optionLabel] of options) {
       select.createEl("option", { text: optionLabel, attr: { value: optionValue } });
     }
@@ -7808,6 +7811,7 @@ class NovelerSettingTab extends PluginSettingTab {
       .setName("Default manuscript font")
       .setDesc("Font used when a scene has no saved typography.")
       .addDropdown((dropdown) => {
+        dropdown.selectEl.addClass("noveler-font-family-select");
         const selectedFont = getSelectedFontFamily(draft.typography);
         for (const [value, label] of this.getSettingsFontOptions(selectedFont)) {
           dropdown.addOption(value, label);
@@ -8263,7 +8267,7 @@ class NovelerSettingTab extends PluginSettingTab {
       label.createSpan({ text: labelText });
       return label;
     };
-    const font = addField("Font").createEl("select");
+    const font = addField("Font").createEl("select", { cls: "noveler-font-family-select" });
     for (const [value, label] of this.getSettingsFontOptions(style.fontFamily)) {
       font.createEl("option", { value, text: label });
     }
