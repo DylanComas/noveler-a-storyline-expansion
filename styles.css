@@ -1147,6 +1147,10 @@
   gap: 12px;
 }
 
+.noveler-editor-settings-grid > .noveler-setting-wide {
+  grid-column: 1 / -1;
+}
+
 .noveler-editor-settings-grid > .setting-item > .setting-item-control {
   width: 100%;
   max-width: 190px;

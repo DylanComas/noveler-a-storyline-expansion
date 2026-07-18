@@ -136,7 +136,7 @@ Bridge settings include:
 - Add ePub export support to StoryLine's export options.
 - Choose the publication language written into ePub metadata.
 
-When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. Noveler reuses one dedicated editor tab rather than opening duplicate Noveler tabs. The bridge opens Markdown scene files directly inside a project's `Scenes` folder or in nested organization folders such as `Scenes/Act`.
+When enabled, StoryLine scene clicks, scene opens, manuscript tab navigation, and compatible scene paths can be redirected into Noveler. By default, Noveler reuses one dedicated editor tab; disable **One instance limit** in Editor settings to keep different scenes open in separate Noveler tabs. The bridge opens Markdown scene files directly inside a project's `Scenes` folder or in nested organization folders such as `Scenes/Act`.
 
 Noveler can display visual-only links for StoryLine Characters, Locations, and Items directly in manuscript text. Each category has its own configurable color and bottom-bar visibility toggle. Links recognize entry names and supported nickname or alias fields, including custom Item fields named `NICKNAME / ALIAS`. Clicking a link opens the corresponding StoryLine entry without adding link markup to the Markdown scene or its exports.
 
@@ -238,6 +238,7 @@ After migration, future settings are saved inside the `noveler-a-storyline-expan
 - **Focus mode**: A distraction-reduced drafting view with typewriter behavior and current-line or current-paragraph focus.
 - **Rich formatting toolbar**: Fast access to fonts, text styling, colors, paragraph styles, headings, alignment, spacing, lists, and manuscript elements.
 - **Scene-aware editing**: StoryLine Markdown scenes can open in Noveler while preserving frontmatter and scene-specific typography settings.
+- **Optional multi-tab editing**: Keep Noveler limited to one editor tab or allow different scenes to remain open in separate tabs.
 - **StoryLine manuscript routing**: Scene opens and the StoryLine Manuscript tab can be replaced by Noveler.
 - **Colored StoryLine entity links**: Visual-only Character, Location, and Item links use configurable colors, aliases, and direct Codex navigation.
 - **Selection-to-Codex workflow**: Search existing entries or create new Characters, Locations, and Items from selected manuscript text without leaving Noveler.

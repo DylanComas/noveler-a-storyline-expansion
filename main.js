@@ -147,6 +147,7 @@ const ENGLISH_LOCALE = Object.freeze({
     "Justify": "Justify",
     "justify": "justify",
     "Keep the active writing position centered.": "Keep the active writing position centered.",
+    "Keep only one Noveler editor tab open.": "Keep only one Noveler editor tab open.",
     "Korean": "Korean",
     "Language": "Language",
     "Left": "Left",
@@ -300,6 +301,7 @@ const ENGLISH_LOCALE = Object.freeze({
     "Noveler: Zoom out": "Noveler: Zoom out",
     "Noveler/{value}": "Noveler/{value}",
     "Numbered list": "Numbered list",
+    "One instance limit": "One instance limit",
     "Open a StoryLine project before creating Codex entries.": "Open a StoryLine project before creating Codex entries.",
     "Open a document in Noveler before using Antidote Connect.": "Open a document in Noveler before using Antidote Connect.",
     "Open Noveler": "Open Noveler",
@@ -423,6 +425,9 @@ const DEFAULT_SETTINGS = {
     marginLeft: 96,
     headerFooterFontSize: 9,
     rulerUnits: "imperial"
+  },
+  editor: {
+    singleInstanceLimit: true
   },
   focus: {
     defaultZoom: 150,
@@ -2037,7 +2042,7 @@ class NovelerPlugin extends Plugin {
       this.novelerRibbonEl.setAttribute("aria-label", this.t("Open Noveler"));
     }
     if (this.storyLineBridgeModule) {
-      this.storyLineBridgeModule.enhanceStoryLineExportModals();
+      this.storyLineBridgeModule.scheduleExportModalEnhancement();
     }
     window.dispatchEvent(new CustomEvent("noveler-language-changed", { detail: { locale: selected } }));
     return selected;
@@ -2213,10 +2218,22 @@ class NovelerPlugin extends Plugin {
     }, 0);
   }
 
+  isSingleInstanceLimitEnabled() {
+    return !this.settings.editor || this.settings.editor.singleInstanceLimit !== false;
+  }
+
   enforceSingleNovelerView(preferredLeaf) {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
     if (!leaves.length) {
       return null;
+    }
+    if (!this.isSingleInstanceLimitEnabled()) {
+      const activeLeaf = this.app.workspace.activeLeaf;
+      return leaves.includes(preferredLeaf)
+        ? preferredLeaf
+        : leaves.includes(activeLeaf)
+          ? activeLeaf
+          : leaves[0];
     }
     if (this.enforcingSingleNovelerView) {
       return leaves.includes(preferredLeaf) ? preferredLeaf : leaves[0];
@@ -2259,7 +2276,21 @@ class NovelerPlugin extends Plugin {
       });
     }
 
-    let leaf = this.enforceSingleNovelerView();
+    const singleInstance = this.isSingleInstanceLimitEnabled();
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
+    const statePath = normalizeVaultPath(state.path || state.filePath);
+    let leaf = singleInstance
+      ? this.enforceSingleNovelerView()
+      : leaves.find((candidate) => (
+        statePath
+        && candidate.view instanceof NovelerView
+        && normalizeVaultPath(candidate.view.currentDocumentPath) === statePath
+      )) || (this.app.workspace.activeLeaf && this.app.workspace.activeLeaf.view instanceof NovelerView
+        ? this.app.workspace.activeLeaf
+        : null);
+    if (!leaf && !singleInstance && options.targetLeaf && options.replaceLeaf) {
+      leaf = options.targetLeaf;
+    }
     if (leaf && leaf.view instanceof NovelerView) {
       if (state.path) {
         await leaf.view.openScenePath(state.path, { source: state.source, silent: true });
@@ -2275,7 +2306,9 @@ class NovelerPlugin extends Plugin {
     } else if (state && Object.keys(state).length) {
       await leaf.setViewState({ type: VIEW_TYPE, active: true, state });
     }
-    leaf = this.enforceSingleNovelerView(leaf) || leaf;
+    if (singleInstance) {
+      leaf = this.enforceSingleNovelerView(leaf) || leaf;
+    }
     this.app.workspace.revealLeaf(leaf);
 
     if (state.path && leaf.view instanceof NovelerView) {
@@ -2344,6 +2377,9 @@ class NovelerPlugin extends Plugin {
     const data = this.getSerializableSettings();
     await this.queueSettingsPersistence(data, true);
     this.refreshOpenViews();
+    if (this.isSingleInstanceLimitEnabled()) {
+      this.enforceSingleNovelerView();
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("noveler-settings-changed", { detail: { settings: this.settings } }));
     }
@@ -7774,7 +7810,7 @@ class NovelerSettingTab extends PluginSettingTab {
       accent: "#3b82f6",
       open: true
     });
-    this.attachSectionUndo(editorSection, draft, ["layout", "typography"], "Editor");
+    this.attachSectionUndo(editorSection, draft, ["layout", "editor", "typography"], "Editor");
     const integrationGrid = editorSection.createDiv({ cls: "noveler-integration-grid" });
     this.addPluginStatusCard(integrationGrid, ["storyline"], "StoryLine", "library");
     this.addPluginStatusCard(
@@ -7880,6 +7916,16 @@ class NovelerSettingTab extends PluginSettingTab {
           }
         });
       });
+    const instanceLimitSetting = new Setting(editorGrid)
+      .setName("One instance limit")
+      .setDesc("Keep only one Noveler editor tab open.")
+      .addToggle((toggle) => toggle
+        .setValue(!draft.editor || draft.editor.singleInstanceLimit !== false)
+        .onChange((value) => {
+          draft.editor = draft.editor && typeof draft.editor === "object" ? draft.editor : {};
+          draft.editor.singleInstanceLimit = value;
+        }));
+    instanceLimitSetting.settingEl.addClass("noveler-setting-wide");
     this.addMarginEditor(editorSection, draft);
 
     const focusSection = this.createSettingsSection(containerEl, {
@@ -9442,7 +9488,11 @@ class NovelerStoryLineBridgePlugin {
     this.patchedLeaves = new Map();
     this.enhancedExportSelects = new WeakSet();
     this.enhancedExportButtons = new WeakSet();
+    this.handledExportEvents = new WeakSet();
     this.exportOptionStateByModal = new WeakMap();
+    this.exportModalEnhancementScheduled = false;
+    this.cancelScheduledExportModalEnhancement = null;
+    this.enhancingExportModals = false;
 
     this.registerApi();
     this.registerExportCommands();
@@ -9451,6 +9501,11 @@ class NovelerStoryLineBridgePlugin {
   }
 
   onunload() {
+    if (this.cancelScheduledExportModalEnhancement) {
+      this.cancelScheduledExportModalEnhancement();
+      this.cancelScheduledExportModalEnhancement = null;
+      this.exportModalEnhancementScheduled = false;
+    }
     if (this.exportModalObserver) {
       this.exportModalObserver.disconnect();
       this.exportModalObserver = null;
@@ -9470,7 +9525,7 @@ class NovelerStoryLineBridgePlugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.registerApi();
-    this.enhanceStoryLineExportModals();
+    this.scheduleExportModalEnhancement();
   }
 
   registerApi() {
@@ -9570,7 +9625,11 @@ class NovelerStoryLineBridgePlugin {
   installExportModalEnhancer() {
     this.registerDomEvent(document, "click", (event) => this.onStoryLineExportButtonClick(event), { capture: true });
 
-    this.exportModalObserver = new MutationObserver(() => this.enhanceStoryLineExportModals());
+    this.exportModalObserver = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => this.mutationTouchesExportModal(mutation))) {
+        this.scheduleExportModalEnhancement();
+      }
+    });
     this.exportModalObserver.observe(document.body, { childList: true, subtree: true });
     this.register(() => {
       if (this.exportModalObserver) {
@@ -9580,39 +9639,75 @@ class NovelerStoryLineBridgePlugin {
     });
 
     if (typeof this.app.workspace.onLayoutReady === "function") {
-      this.app.workspace.onLayoutReady(() => this.enhanceStoryLineExportModals());
+      this.app.workspace.onLayoutReady(() => this.scheduleExportModalEnhancement());
     } else {
-      window.setTimeout(() => this.enhanceStoryLineExportModals(), 0);
+      this.scheduleExportModalEnhancement();
     }
   }
 
-  enhanceStoryLineExportModals() {
-    if (!this.isEnabled()) {
+  scheduleExportModalEnhancement() {
+    if (this.exportModalEnhancementScheduled) {
       return;
     }
-    for (const modal of Array.from(document.querySelectorAll(".storyline-export-modal"))) {
-      const parts = this.getExportModalParts(modal);
-      if (!parts || !parts.formatSelect) {
-        continue;
-      }
-      this.syncStoryLineEpubExportOption(parts.formatSelect);
-      if (!this.enhancedExportSelects.has(parts.formatSelect)) {
-        parts.formatSelect.addEventListener("change", () => {
-          if (parts.formatSelect.value === "epub" && parts.contentSelect && parts.contentSelect.value !== "manuscript") {
-            parts.contentSelect.value = "manuscript";
-            parts.contentSelect.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-          window.setTimeout(() => this.syncBridgeExportOptions(modal), 0);
-        });
-        if (parts.contentSelect) {
-          parts.contentSelect.addEventListener("change", () => {
+    this.exportModalEnhancementScheduled = true;
+    const run = () => {
+      this.exportModalEnhancementScheduled = false;
+      this.cancelScheduledExportModalEnhancement = null;
+      this.enhanceStoryLineExportModals();
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      const frame = window.requestAnimationFrame(run);
+      this.cancelScheduledExportModalEnhancement = () => window.cancelAnimationFrame(frame);
+    } else {
+      const timer = window.setTimeout(run, 0);
+      this.cancelScheduledExportModalEnhancement = () => window.clearTimeout(timer);
+    }
+  }
+
+  mutationTouchesExportModal(mutation) {
+    const containsExportModal = (node) => !!(node && (
+      (typeof node.matches === "function" && node.matches(".storyline-export-modal"))
+      || (typeof node.querySelector === "function" && node.querySelector(".storyline-export-modal"))
+    ));
+    const target = mutation && mutation.target;
+    if (target && typeof target.closest === "function" && target.closest(".storyline-export-modal")) {
+      return true;
+    }
+    return Array.from((mutation && mutation.addedNodes) || []).some(containsExportModal);
+  }
+
+  enhanceStoryLineExportModals() {
+    if (!this.isEnabled() || this.enhancingExportModals) {
+      return;
+    }
+    this.enhancingExportModals = true;
+    try {
+      for (const modal of Array.from(document.querySelectorAll(".storyline-export-modal"))) {
+        const parts = this.getExportModalParts(modal);
+        if (!parts || !parts.formatSelect) {
+          continue;
+        }
+        this.syncStoryLineEpubExportOption(parts.formatSelect);
+        if (!this.enhancedExportSelects.has(parts.formatSelect)) {
+          parts.formatSelect.addEventListener("change", () => {
+            if (parts.formatSelect.value === "epub" && parts.contentSelect && parts.contentSelect.value !== "manuscript") {
+              parts.contentSelect.value = "manuscript";
+              parts.contentSelect.dispatchEvent(new Event("change", { bubbles: true }));
+            }
             window.setTimeout(() => this.syncBridgeExportOptions(modal), 0);
           });
+          if (parts.contentSelect) {
+            parts.contentSelect.addEventListener("change", () => {
+              window.setTimeout(() => this.syncBridgeExportOptions(modal), 0);
+            });
+          }
+          this.enhancedExportSelects.add(parts.formatSelect);
         }
-        this.enhancedExportSelects.add(parts.formatSelect);
+        this.enhanceExportButton(modal);
+        this.syncBridgeExportOptions(modal);
       }
-      this.enhanceExportButton(modal);
-      this.syncBridgeExportOptions(modal);
+    } finally {
+      this.enhancingExportModals = false;
     }
   }
 
@@ -9620,6 +9715,7 @@ class NovelerStoryLineBridgePlugin {
     if (!formatSelect) {
       return;
     }
+    const label = this.host.t("ePub (.epub)");
     const epubOption = Array.from(formatSelect.options).find((option) => option.value === "epub");
     if (this.settings.enableEpubExport === false) {
       const wasSelected = formatSelect.value === "epub";
@@ -9638,11 +9734,11 @@ class NovelerStoryLineBridgePlugin {
     if (!epubOption) {
       const option = document.createElement("option");
       option.value = "epub";
-      option.text = this.host.t("ePub (.epub)");
+      option.text = label;
       const pdfOption = Array.from(formatSelect.options).find((item) => item.value === "pdf");
       formatSelect.add(option, pdfOption ? pdfOption.index + 1 : undefined);
-    } else {
-      epubOption.text = this.host.t("ePub (.epub)");
+    } else if (epubOption.text !== label) {
+      epubOption.text = label;
     }
   }
 
@@ -9750,7 +9846,7 @@ class NovelerStoryLineBridgePlugin {
   }
 
   onStoryLineExportButtonClick(event) {
-    if (!this.isEnabled()) {
+    if (!this.isEnabled() || this.handledExportEvents.has(event)) {
       return;
     }
     const target = event.target;
@@ -9774,6 +9870,7 @@ class NovelerStoryLineBridgePlugin {
       return;
     }
 
+    this.handledExportEvents.add(event);
     event.preventDefault();
     event.stopPropagation();
     if (typeof event.stopImmediatePropagation === "function") {
@@ -11328,7 +11425,7 @@ class NovelerStoryLineExpansionPlugin extends NovelerPlugin {
     }
     this.storyLineBridgeModule.settings = clone(this.settings.storyLineBridge);
     this.storyLineBridgeModule.registerApi();
-    this.storyLineBridgeModule.enhanceStoryLineExportModals();
+    this.storyLineBridgeModule.scheduleExportModalEnhancement();
   }
 
   async saveSettings() {
